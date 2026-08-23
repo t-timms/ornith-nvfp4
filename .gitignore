@@ -1,0 +1,19 @@
+# Checkpoints and artifacts are large and reproducible from the scripts.
+*.safetensors
+*.pt
+*.log
+models/
+reap-stability/
+bench-ab/
+__pycache__/
+*.pyc
+.venv/
+
+# SWE-bench artifacts (large, reproducible)
+swebench_pilot/
+swebench_eval/
+*.jsonl
+!scripts/swebench/registry.json
+
+# Local Claude Code operating instructions - never publish
+CLAUDE.md
