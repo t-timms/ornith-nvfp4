@@ -49,6 +49,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Prune, MTP-strip, and quantize scripts staged (none executed — all
   blocked on GPU go-ahead): `scripts/prune/run_prune.sh`,
   `scripts/prune/strip_mtp.py`, `scripts/quantize/quantize_ornith_gptq.py`.
+- Vision-tower phantom-vs-trained question resolved
+  (`docs/vision_tower_decision.md`): loaded `model.visual.*` tensors
+  directly from the downloaded checkpoint and compared their statistics
+  against known transformer-init fingerprints (all-ones norm weight,
+  zero linear bias, flat 0.02 std) and against the text backbone's
+  known-trained layernorm weights as a positive control. Result: genuinely
+  trained, not phantom — norm weights show real cross-layer structure and
+  are essentially never exactly 1.0, biases have drifted far from zero
+  init. Decision unchanged (still strip it for the text-only 16GB build),
+  but it's now documented as a deliberate capability trade-off rather than
+  a free removal of dead weight.
 
 ### Changed
 

@@ -74,17 +74,18 @@ what shipped) — this is where the project is headed and why, kept current.
 
 ## Next (in order)
 
-1. **Resolve the vision-tower question** before assuming it's free to
-   strip. Check whether Ornith's vision weights show signs of real training
-   (the published `mmproj-*.gguf` file suggests they might, unlike the
-   prior model's confirmed-phantom tower) before treating removal as a
-   zero-cost step.
-2. **Checkpoint download** — in progress (see above), check
-   `~/download_ornith.log` for `DOWNLOAD_COMPLETE`.
+1. ~~Resolve the vision-tower question.~~ **Done** — confirmed genuinely
+   trained, not phantom, by comparing `model.visual.*` weight statistics
+   (norm-weight drift from init, non-zero linear biases) against the
+   known-trained text backbone. Full method and stats:
+   `docs/vision_tower_decision.md`. Removal in step 6 below is a deliberate
+   scope trade-off, not a free strip of dead weight.
+2. ~~Checkpoint download.~~ **Done** — 67GB on disk at
+   `~/models/Ornith-1.5-35B-A3B`, verified complete (33/33 files).
 3. **Full REAP prune at 50%** (256→128 experts): `bash
-   scripts/prune/run_prune.sh`. Staged and RAM-checked (see above). **Blocked
-   on step 2 finishing and on explicit user GPU go-ahead** (multi-hour GPU
-   run, matches this project's standing practice for expensive operations).
+   scripts/prune/run_prune.sh`. Staged and RAM-checked (see above), checkpoint
+   ready. **Blocked on explicit user GPU go-ahead** (multi-hour GPU run,
+   matches this project's standing practice for expensive operations).
 4. **MTP-head checkpoint surgery**: `python3 scripts/prune/strip_mtp.py
    --checkpoint <run_prune.sh's output dir> --output-dir <output>-mtp-stripped`
    (script staged, see above; `run_prune.sh` prints the exact invocation with
@@ -92,8 +93,9 @@ what shipped) — this is where the project is headed and why, kept current.
 5. **Quantize to NVFP4A16 via GPTQ** (`quantize_ornith_gptq.py`, corrected
    default — see above). The script fails fast if step 4 wasn't done
    (checks `mtp_num_hidden_layers == 0` before spending calibration time).
-6. **Strip vision tower** (or don't, per step 1's finding) and assemble the
-   release candidate.
+6. **Strip vision tower** (confirmed genuinely trained per step 1 — this is
+   a real capability trade-off, not a no-op) and assemble the release
+   candidate.
 7. **HumanEval+/MBPP+ accuracy suite.**
 8. **SWE-bench validation ladder**: single-instance smoke → small bounded
    sample → full 50-instance pilot. Same promotion discipline as the prior

@@ -69,15 +69,17 @@ same as the prior release.
   `t-timms/reap-cuda`, `fix/qwen3-5-router-renormalization`, commit
   `b67be1a`. Script: `scripts/prune/smoke_ornith.py` (mirrors
   `reap-cuda/scripts/smoke_ornith.py`, kept in both places).
-- **Open question, not yet resolved**: whether Ornith's vision tower is
-  phantom (untrained, like the prior model's — free to strip) or genuinely
-  trained. Evidence leans toward "genuinely trained": ornith-ai's GGUF repo
-  publishes a dedicated `mmproj-*.gguf` multimodal projector file, which is
-  specifically what enables real image understanding in llama.cpp — the
-  prior model never published an equivalent. If confirmed trained, stripping
-  it for our text-only use case is still almost certainly the right call,
-  but it's a deliberate capability trade-off, not a free removal of
-  untrained weights the way it was last time. Verify before stripping.
+- **Vision-tower question resolved: genuinely trained, not phantom.**
+  Confirmed empirically against the real downloaded checkpoint, not just
+  inferred from the published `mmproj-*.gguf` file. `model.visual.*` norm
+  weights show real cross-layer structure and are essentially never exactly
+  1.0 (the init value) — the same statistical signature as the text
+  backbone's known-trained layernorm weights — and linear-layer biases have
+  drifted far from their zero init. Unlike the prior model's confirmed-
+  phantom tower, this one was actually trained on images. Stripping it for
+  this project's text-only 16GB target is still the right call, but it's
+  now documented as discarding a real capability for scope reasons, not
+  removing dead weight. Full method and stats: `docs/vision_tower_decision.md`.
 - **SOTA research pass done, then independently audited.** Sourced review
   across architecture, pruning, quantization, serving, and sampling
   (`docs/optimization_research_2026-08-23.md`, 20+ citations), followed by
@@ -139,7 +141,11 @@ same as the prior release.
 5. **Quantize to NVFP4A16 via GPTQ** (`scripts/quantize/quantize_ornith_gptq.py`
    — corrected default, see "Where things stand"). Fails fast if step 4
    wasn't done first.
-6. Strip the vision tower, after resolving the phantom-vs-trained question above.
+6. Strip the vision tower — confirmed genuinely trained, not phantom (see
+   "Where things stand" and `docs/vision_tower_decision.md`); removal is a
+   deliberate scope trade-off, not a free removal of dead weight. REAP
+   itself never touches `model.visual.*`, so this is unaffected by prune
+   timing.
 7. HumanEval+/MBPP+ accuracy suite.
 8. SWE-bench validation ladder: single-instance smoke → small bounded
    sample → full 50-instance pilot. Never a straight jump to the full pilot
