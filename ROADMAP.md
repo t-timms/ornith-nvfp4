@@ -194,8 +194,8 @@ what shipped) — this is where the project is headed and why, kept current.
    the board but in the same tier, reasonable given more aggressive (50%)
    REAP pruning on a different base model. Raw results:
    `~/eval-suite-ornith-vllm/`.
-8. **SWE-bench validation ladder**: single-instance smoke → small bounded
-   sample → full 50-instance pilot. Same promotion discipline as the prior
+8. ~~SWE-bench validation ladder~~ **Done (2026-08-26)** — single-instance
+   smoke → small bounded sample → full 50-instance pilot. Same promotion discipline as the prior
    project throughout — no step skipped, no full-pilot claim made on
    single-instance evidence. Before first launch, check
    `docs/serving_notes.md` for known-before-launch vLLM flags
@@ -217,6 +217,20 @@ what shipped) — this is where the project is headed and why, kept current.
    (scripts/swebench/run_ladder_night.sh): 1-instance submission check ->
    gated -> 10-instance bounded sample -> gated -> 50-instance pilot,
    gates on patch mechanics only, scoring deferred to human review.
+
+   **2026-08-26 completion.** The chained overnight run relaunched clean
+   after the gaming shutdown and finished all rungs: Gate A 1/1 Submitted;
+   Gate B 10/10 instances, 8/10 nonempty; pilot 50/50 instances, 27/50
+   nonempty (27 Submitted / 15 ContextWindowExceeded / 6 LimitsExceeded /
+   2 RepeatedFormatError), 96.5% prefix-cache hit rate, served at the
+   49,152 window (54,067-token KV budget). Graded with the official
+   harness (`scripts/swebench/grade_pilot.sh`): **22/50 = 44.0% resolved,
+   22/27 = 81.5% resolved-of-completed, zero infra/error instances** — on
+   the same 50-instance slice as the prior project's 52.0%, so directly
+   comparable: the gap is submission rate (33 vs 27), not resolve quality
+   (81.25% vs 81.5% resolved-of-completed). Card updated with the
+   SWE-bench section, ceiling, and sampling disclosure; re-uploaded to
+   the Hub.
 
 ## Longer-horizon / not scheduled
 

@@ -1,8 +1,30 @@
+---
+license: mit
+base_model: ornith-ai/Ornith-1.5-35B-A3B
+pipeline_tag: text-generation
+library_name: transformers
+tags:
+- reap
+- pruning
+- expert-pruning
+- nvfp4
+- nvfp4a16
+- fp4
+- 4-bit precision
+- compressed-tensors
+- quantization
+- vllm
+- blackwell
+- mixture-of-experts
+- moe
+- code
+---
+
 # Ornith-1.5-35B-A3B REAP-50 NVFP4A16 (16 GB)
 
 **REAP expert-pruned (50%) + GPTQ-NVFP4A16 quantized build of `ornith-ai/Ornith-1.5-35B-A3B`, sized and served to run as a local coding model inside 16 GB of consumer VRAM** — 12.47 GiB, RTX 5070 Ti (SM120), vLLM. Text-only: the base model's genuinely-trained vision tower and its MTP draft head are deliberately removed (documented trade-offs below), which is what makes the text-only architecture (`Qwen3_5MoeForCausalLM`) servable by stock-class vLLM after two confirmed upstream gaps were patched locally (both independently fixed upstream since, in vLLM #50210).
 
-**First quality signal — HumanEval+ 84.15% [77.8, 88.9], HumanEval 90.24% [84.7, 93.9], MBPP+ 89.15% [85.6, 91.9]**, greedy decoding, instruct framing, measured on exactly the released checkpoint. SWE-bench Verified has **not** been measured yet for this build; see the evaluation section for how it will be — this card will be updated when those numbers exist, and no agentic claim should be inferred from the code benchmarks above.
+**First quality signal — HumanEval+ 84.15% [77.8, 88.9], HumanEval 90.24% [84.7, 93.9], MBPP+ 89.15% [85.6, 91.9]**, greedy decoding, instruct framing, measured on exactly the released checkpoint. Agentic: **SWE-bench Verified 22/50 = 44.0% resolved** (81.5% resolved-of-completed), via `mini-swe-agent`'s official bash-only scaffold at a 49K-token context ceiling, graded by the official harness with zero infra failures — measured on the same 50-instance slice as the prior release's 52.0% figure. The run is context-limited (15/50 hit the ceiling before submitting); see the SWE-bench section below before citing the headline number without that context.
 
 ## Highlights
 
@@ -11,6 +33,7 @@ Result | Detail
 **12.47 GiB** | REAP 50% expert pruning (256→128 experts) + GPTQ-NVFP4A16 (weight-only), vision tower and MTP head stripped
 **84.15% [77.8, 88.9]** | HumanEval+, greedy, instruct framing, n=164 — first genuine accuracy measurement of this pipeline, on the released artifact
 **89.15% [85.6, 91.9]** | MBPP+, same protocol, n=378
+**44.0%** (22/50) | SWE-bench Verified, `mini-swe-agent` bash-only, 49K context — see caveats below
 ~19 B params (from 35.95 B) | Expert halving is what pays for the 16 GB budget; 8-of-128 expert routing preserved
 MIT | Inherited from the base model
 
@@ -39,9 +62,22 @@ MBPP+ | 89.15% | [85.6, 91.9] | 378
 
 The full 706-problem suite ran in ~12 minutes through vLLM's backend. For tier context, our previous release (KAT-Coder-V2.5-Dev REAP-50 NVFP4A16, a different and code-specialized base) scored 96.34 / 89.63 / 89.42 on the same three tasks: this build is lower across the board but in the same tier, consistent with more aggressive pruning (same 50%) applied to a general-purpose MoE base rather than a code-specialized one. No upstream HumanEval/MBPP numbers are published for `Ornith-1.5-35B-A3B` itself, so there is no published figure to compare against directly.
 
-### SWE-bench Verified — not yet measured
+### SWE-bench Verified — read before citing the 44.0% figure alone
 
-This project publishes SWE-bench Verified only after a fixed validation ladder: single-instance smoke → small bounded sample → full 50-instance pilot, with the same promotion discipline as the prior release. That ladder has not started for this checkpoint. When it completes, this section gets the score, the full failure-mode breakdown, and the context-ceiling caveats the prior release's card documents. Until then: no agentic performance claim is made or implied.
+Measured 2026-08-26 via `mini-swe-agent`'s official bash-only scaffold (the prior release's protocol), graded by the official SWE-bench harness with zero infra or eval errors, on the released checkpoint itself:
+
+| metric | value |
+|---|---:|
+| resolved | **22/50 = 44.0%** |
+| resolved of completed (valid patch produced and tested) | 22/27 = **81.5%** |
+| ContextWindowExceeded | 15 (49K ceiling) |
+| LimitsExceeded (agent turns exhausted, step_limit 65) | 6 |
+| RepeatedFormatError (no usable tool call) | 2 |
+| ran, tests failed (genuinely unresolved) | 5 |
+
+The 50 instances are the same shuffled slice the prior release's 52.0% figure comes from — a same-instance comparison under the same scaffold, window, and step limit. Prior release (KAT-Coder-V2.5-Dev REAP-50 NVFP4A16, code-specialized base): 26/50 resolved, 26/32 = 81.25% resolved-of-completed. This build: 22/50, 22/27 = 81.5% resolved-of-completed. The headline gap is entirely submission rate (33 vs 27 instances reached a real completion attempt), not patch quality once submitted — resolved-of-completed is indistinguishable. Where the missing submissions went: 15 ContextWindowExceeded (both builds fail this way — the 16 GB KV budget is the binding constraint, not the model), 6 LimitsExceeded (the prior release had none at step_limit 65; instances this base finishes less turn-efficiently), 2 RepeatedFormatError. 18 instances were resolved by both builds, 8 only by the prior release, 4 only by this one. Consistent with the code-benchmark tier picture above: same tier, slightly behind the code-specialized prior release.
+
+**Config note.** Sampling followed the checkpoint's own `generation_config.json` (temperature 1.0 / top_p 0.95 / top_k 20) — the vendor-documented default, adopted as the starting point and flagged as unvalidated in `scripts/swebench/ornith_overrides_ladder.yaml`; the prior project's precedent is that this class of choice must survive a full pilot before being trusted, and no sampling sweep has been run here. Window: `max_model_len` 49,152 with a measured 54,067-token total KV budget (1.10x concurrency at workers=1; the ceiling varies 40–61K tokens with desktop VRAM contention, and the ladder harness falls back to smaller windows automatically). Read the headline as context-limited, not unconditional: 15 of 50 instances never submitted because they ran out of window. Raw artifacts (trajectories, `preds.json`, grading report) are preserved with the run; reproduction entry points: `scripts/swebench/run_ladder_night.sh`, `scripts/swebench/grade_pilot.sh`.
 
 ## Quantization and pruning details
 
@@ -82,15 +118,15 @@ Notes, each earned the hard way:
 - `--max-cudagraph-capture-size` below vLLM's default of 512 avoids a documented mamba-cache assertion for this architecture family; 8 is what the evaluated configuration used.
 - `--mamba-block-size 528 --block-size 528` alignment is required for correct hybrid-cache sizing on this checkpoint.
 - Prefix caching works, but is ineffective for prompts shorter than the 528-token mamba block boundary (open upstream issue vllm-project/vllm #40696) — expect no prefix-cache benefit on short early turns in agentic workloads.
-- `max_model_len` was capped at 2048 during benchmarking; larger contexts are expected to work but were not part of the measured configuration, and the safe ceiling on a 16 GB card will be published with the SWE-bench results.
-- Greedy (`temperature=0`) is what every number on this card was measured with. No sampling recommendation is made yet; sampling sweeps belong to the SWE-bench phase.
+- The code benchmarks ran with `max_model_len` 2048; the SWE-bench pilot served the same released checkpoint at 49,152 with a measured 54,067-token total KV budget — the measured serving ceiling on this 16 GB card (it varies 40–61K tokens with desktop VRAM contention).
+- Greedy (`temperature=0`) is what the HumanEval+/MBPP+ numbers were measured with. The SWE-bench pilot instead used the checkpoint's own `generation_config.json` sampling (temperature 1.0 / top_p 0.95 / top_k 20) — the vendor-documented default, adopted as the starting point, not a validated choice; see the config note in the SWE-bench section.
 
 ## Known limitations
 
 - **No pruning-ablation baseline measured.** The unpruned model does not fit this hardware; the accuracy cost of REAP itself (independent of quantization) is not isolated here. The comparison against the prior release above is tier context, not an ablation.
 - **Text-only by construction.** The vision tower was trained and worked; this build cannot see images. Documented trade-off, reversible in principle by rebuilding from the unstripped variant.
 - **No MTP / speculative decoding.** Forfeited by the MTP-strip decision above.
-- **Context ceiling unpublished.** The measured evaluation ran at 2,048 tokens; the safe serving ceiling for 16 GB will be stated with the SWE-bench results rather than guessed here.
+- **Context-limited agentic results.** The SWE-bench pilot served at a 49K window; 15/50 instances hit ContextWindowExceeded before submitting, so 44.0% is a floor under this hardware budget rather than an unconditional capability number. The ceiling itself moves (40–61K tokens total) with desktop VRAM contention on this card.
 - These are self-reported numbers with published reproduction scripts, independently re-runnable from the eval suite in the companion repository; they are not leaderboard submissions.
 
 ## Prior art and scope of claims
@@ -100,7 +136,7 @@ Verified against the Hugging Face Hub on 2026-08-25:
 - Unpruned NVFP4 of this base exists officially: `ornith-ai/Ornith-1.5-35B-A3B-NVFP4` (~21.8 GiB).
 - REAP-pruned Ornith builds did not exist on the Hub as of that date.
 
-What is distinct, and all that is claimed: a **vLLM-servable Ornith that fits 16 GB with KV-cache room**, with published HumanEval+/MBPP+ numbers, Wilson intervals, and the exact serving configuration — none of which the unpruned quant above publishes. The upstream-gap fixes required to serve text-only Qwen3.5-MoE checkpoints have landed upstream (vLLM #50210), so current vLLM builds serve this architecture without local patching.
+What is distinct, and all that is claimed: a **vLLM-servable Ornith that fits 16 GB with KV-cache room**, with published HumanEval+/MBPP+ and SWE-bench Verified numbers, Wilson intervals, and the exact serving configuration — none of which the unpruned quant above publishes. The upstream-gap fixes required to serve text-only Qwen3.5-MoE checkpoints have landed upstream (vLLM #50210), so current vLLM builds serve this architecture without local patching.
 
 ## License
 

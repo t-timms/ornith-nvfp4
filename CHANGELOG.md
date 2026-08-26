@@ -9,6 +9,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- SWE-bench Verified validation ladder completed end-to-end (smoke → 10-instance gate → 50-instance pilot) and graded with the official harness: **22/50 = 44.0% resolved, 81.5% resolved-of-completed, zero infra failures**, via `mini-swe-agent`'s bash-only scaffold at a 49K-token window — the same 50-instance slice as the prior release's 52.0%, an apples-to-apples comparison (`scripts/swebench/run_ladder_night.sh`, `scripts/swebench/grade_pilot.sh`).
+- Model card updated with the measured SWE-bench section, the serving context ceiling (49K window; 40–61K-token total KV budget depending on desktop VRAM contention), and the sampling disclosure; re-uploaded to the Hub.
 - Repo created. Base-model selection research (`docs/base_model_selection.md`):
   Ornith-1.5-35B-A3B chosen over the full Qwen3-Coder family and a broader
   HF search, with every quant variant checked at exact measured sizes and
