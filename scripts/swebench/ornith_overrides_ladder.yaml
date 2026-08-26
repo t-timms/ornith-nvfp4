@@ -16,9 +16,13 @@
 # - step_limit 65: raised from the smoke rung's 40 on direct evidence — the
 #   smoke instance exhausted 40 steps while progressing sanely (no loop), and
 #   the prior project's reference scaffold averages ~87 LM calls/instance.
-#   Window stays 32768 because Ornith's measured KV ceiling is 40,366 tokens
-#   total (1.23x concurrency at 32K); run_ladder_night.sh serializes workers
-#   to 1 so every request stays unpreempted and prefix-cache viable.
+#   Window: raised 32768 -> 49152 on two-draw evidence (2026-08-26): the same
+#   instance Submitted at ~68 messages on one draw and hit ContextWindowExceeded
+#   at ~106 on the other while its own tests were passing - the window is the
+#   binding constraint, matching the prior project's published finding.
+#   Measured KV ceiling supports it (60,787 tokens = 1.24x at workers=1);
+#   run_ladder_night.sh v2 falls back to smaller windows automatically when
+#   desktop-VRAM contention leaves less room in a given launch.
 # - temperature 1.0 / top_p 0.95 / top_k 20: the checkpoint's own
 #   generation_config.json (the vendor-documented sampling recommendation).
 #   KAT precedent warns this class of "base model's documented params" choice
