@@ -234,6 +234,40 @@ what shipped) — this is where the project is headed and why, kept current.
 
 ## Longer-horizon / not scheduled
 
+Project closed 2026-08-26 with v1 released and fully evaluated; the items
+below are the reopen list, in rough priority order.
+
+- **Sampling sweep** — the SWE-bench pilot ran the checkpoint's own
+  `generation_config.json` (temperature 1.0 / top_p 0.95 / top_k 20),
+  adopted as the unvalidated starting point and flagged as such in
+  `scripts/swebench/ornith_overrides_ladder.yaml`. KAT precedent is a
+  direct warning: its `presence_penalty`/`top_k` sweep regressed the
+  full-pilot score (48.0% vs. 52.0%). First candidates: greedy (matches
+  the eval protocol every code-benchmark number on the card used), then
+  a bounded temperature sweep through the same ladder discipline.
+- **Submission-rate gap investigation** — the entire 52.0% → 44.0%
+  headline gap vs the prior release is submission rate (33 vs 27
+  completed of 50); resolve quality is identical (81.25% vs 81.5% of
+  completed). Ornith lost 15/50 to ContextWindowExceededError at the
+  49K window and 6/50 to LimitsExceeded at step_limit 65, under the same
+  window and step budget where KAT completed 33. Levers to test:
+  context management (tighter observation truncation), turn efficiency,
+  and whether the window itself can be raised on quieter VRAM.
+- **Seed and ablation coverage** — REAP ran single seed (42); the card's
+  "no pruning-ablation baseline" limitation stands (the unpruned model
+  doesn't fit this hardware). Multi-seed REAP would quantify pruning
+  variance; an unpruned-NVFP4 ablation needs bigger hardware than this
+  card.
+- **Machine housekeeping (do on reopen):** run
+  `wsl --setdefault Ubuntu-24.04` in PowerShell (one line, nothing
+  deleted — it just stops new terminals opening into the empty 26.04
+  distro; see HANDOFF.md §0), and decide on the ~57 idle swebench
+  Docker eval images (51.3 GB reclaimable; the harness re-pulls them
+  automatically on any future grading run, so deletion only costs
+  re-download time).
+- The KAT-Coder comparison item below is now unblocked — this build has
+  its validated SWE-bench score (44.0%, same-instance vs KAT's 52.0%).
+
 - **MTP-1 speculative decoding** (`--speculative-config '{"method": "mtp", ...}'`)
   — real, vLLM-documented, architecturally confirmed for Ornith, but not usable
   against the v1 checkpoint (MTP disabled per the decision above). Follow-up
