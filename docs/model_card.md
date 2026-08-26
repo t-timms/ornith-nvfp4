@@ -1,6 +1,6 @@
 # Ornith-1.5-35B-A3B REAP-50 NVFP4A16 (16 GB)
 
-**REAP expert-pruned (50%) + GPTQ-NVFP4A16 quantized build of `ornith-ai/Ornith-1.5-35B-A3B`, sized and served to run as a local coding model inside 16 GB of consumer VRAM** — 12.47 GiB, RTX 5070 Ti (SM120), vLLM. Text-only: the base model's genuinely-trained vision tower and its MTP draft head are deliberately removed (documented trade-offs below), which is what makes the text-only architecture (`Qwen3_5MoeForCausalLM`) servable by stock-class vLLM after two confirmed upstream gaps were patched locally (both reported upstream).
+**REAP expert-pruned (50%) + GPTQ-NVFP4A16 quantized build of `ornith-ai/Ornith-1.5-35B-A3B`, sized and served to run as a local coding model inside 16 GB of consumer VRAM** — 12.47 GiB, RTX 5070 Ti (SM120), vLLM. Text-only: the base model's genuinely-trained vision tower and its MTP draft head are deliberately removed (documented trade-offs below), which is what makes the text-only architecture (`Qwen3_5MoeForCausalLM`) servable by stock-class vLLM after two confirmed upstream gaps were patched locally (both independently fixed upstream since, in vLLM #50210).
 
 **First quality signal — HumanEval+ 84.15% [77.8, 88.9], HumanEval 90.24% [84.7, 93.9], MBPP+ 89.15% [85.6, 91.9]**, greedy decoding, instruct framing, measured on exactly the released checkpoint. SWE-bench Verified has **not** been measured yet for this build; see the evaluation section for how it will be — this card will be updated when those numbers exist, and no agentic claim should be inferred from the code benchmarks above.
 
@@ -59,7 +59,7 @@ Quantization scheme | NVFP4A16 — weight-only 4-bit float, group size 16, fp8_e
 Quantization calibration | evol-codealpaca, 256 samples, 2048 sequence length, all experts calibrated
 Kept unquantized | 291 tensors: routers, shared-expert gates, embeddings, linear-attention projections, lm_head
 Files | Single `model.safetensors` (12.47 GiB) plus tokenizer/config
-Serving validation | Two confirmed upstream gaps were required to serve this checkpoint and were patched locally (reported upstream): a missing vLLM registry entry for `Qwen3_5MoeForCausalLM`, and three `IsHybrid`-required `get_mamba_state_*` classmethods missing from `Qwen3_5ForCausalLMBase`. Separately, loading this checkpoint family through stock llm-compressor ≤0.13.0 silently drops every quantized expert weight (no `qwen3_5_moe` entry in `ARCH_TO_2D_MAPPINGS`) — if you load these weights outside vLLM, verify your loader keeps them; upstream fix tracked in llm-compressor PR #3080
+Serving validation | Two confirmed upstream gaps were required to serve this checkpoint and were patched locally; both have since been fixed upstream independently (vLLM #50210): a missing model registry entry for `Qwen3_5MoeForCausalLM`, and three `IsHybrid`-required `get_mamba_state_*` classmethods missing from `Qwen3_5ForCausalLMBase`. The pinned, locally-patched vLLM tree that produced the numbers below is referenced in the eval scripts. Separately, loading this checkpoint family through stock llm-compressor ≤0.13.0 silently drops every quantized expert weight (no `qwen3_5_moe` entry in `ARCH_TO_2D_MAPPINGS`) — if you load these weights outside vLLM, verify your loader keeps them; upstream fix tracked in llm-compressor PR #3080 (approved, unmerged as of 2026-08-25)
 Built on | RTX 5070 Ti, 16 GB VRAM, SM120 (compute capability 12.0)
 
 ## Usage
@@ -100,7 +100,7 @@ Verified against the Hugging Face Hub on 2026-08-25:
 - Unpruned NVFP4 of this base exists officially: `ornith-ai/Ornith-1.5-35B-A3B-NVFP4` (~21.8 GiB).
 - REAP-pruned Ornith builds did not exist on the Hub as of that date.
 
-What is distinct, and all that is claimed: a **vLLM-servable Ornith that fits 16 GB with KV-cache room**, with published HumanEval+/MBPP+ numbers, Wilson intervals, and the exact serving configuration — none of which the unpruned quant above publishes. The upstream-gap fixes required to serve text-only Qwen3.5-MoE checkpoints are being contributed back rather than kept private.
+What is distinct, and all that is claimed: a **vLLM-servable Ornith that fits 16 GB with KV-cache room**, with published HumanEval+/MBPP+ numbers, Wilson intervals, and the exact serving configuration — none of which the unpruned quant above publishes. The upstream-gap fixes required to serve text-only Qwen3.5-MoE checkpoints have landed upstream (vLLM #50210), so current vLLM builds serve this architecture without local patching.
 
 ## License
 

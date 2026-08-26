@@ -135,7 +135,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   they had no hardware for.
 - Two vLLM gaps fixed locally to serve the text-only checkpoint
   (`~/vllm-src`, 2026-08-25), both confirmed real upstream gaps by reading
-  upstream code, not project misconfigurations:
+  upstream code, not project misconfigurations. Note (added 2026-08-25,
+  later): both have since been fixed upstream independently by vLLM PR
+  #50210 (text-only Qwen3.5 dense/MoE support), which is newer than this
+  project's pinned checkout — no upstream PRs needed from here, and the
+  local patches remain for reproducibility of tonight's runs:
   - Missing model registry entry: the checkpoint declares
     `Qwen3_5MoeForCausalLM` (the text-only architecture transformers maps
     from `model_type qwen3_5_moe_text`), which vLLM's registry did not list.
