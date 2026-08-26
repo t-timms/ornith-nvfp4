@@ -27,7 +27,8 @@ BASE_OUT="$HOME/swebench_ornith_night"
 RUN_STAMP=$(date +%Y%m%d_%H%M%S)
 
 nonempty_patches () {
-  "$ENVBIN/python" - "$1/preds.json" <<'PY'
+  local out="$1" min="$2"
+  "$ENVBIN/python" - "$out/preds.json" "$min" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
 ne = sum(1 for v in d.values() if (v.get("model_patch") or "").strip())
@@ -82,15 +83,15 @@ rollout () { # $1=n $2=outdir $3=extra-flags
 echo "=== PHASE A: single-instance submission check ==="
 A_OUT="$BASE_OUT/${RUN_STAMP}_a1"
 rollout 1 "$A_OUT" "--slice 0:1"
-if [ -f "$A_OUT/preds.json" ]; then nonempty_patches "$A_OUT" 1; else echo "!! no preds.json in A"; exit 1; fi \
-  || { echo "!! GATE A FAILED: no non-empty patch on the single instance"; exit 1; }
+[ -f "$A_OUT/preds.json" ] || { echo "!! no preds.json in A"; exit 1; }
+nonempty_patches "$A_OUT" 1 || { echo "!! GATE A FAILED: no non-empty patch on the single instance"; exit 1; }
 echo "GATE A PASSED $(date)"
 
 echo "=== PHASE B: 10-instance bounded sample ==="
 B_OUT="$BASE_OUT/${RUN_STAMP}_b10"
 rollout 10 "$B_OUT" "--slice 0:10"
-if [ -f "$B_OUT/preds.json" ]; then nonempty_patches "$B_OUT" 8; else echo "!! no preds.json in B"; exit 1; fi \
-  || { echo "!! GATE B FAILED: <8/10 instances produced a patch"; exit 1; }
+[ -f "$B_OUT/preds.json" ] || { echo "!! no preds.json in B"; exit 1; }
+nonempty_patches "$B_OUT" 8 || { echo "!! GATE B FAILED: <8/10 instances produced a patch"; exit 1; }
 echo "GATE B PASSED $(date)"
 
 echo "=== PHASE C: full 50-instance pilot ==="
