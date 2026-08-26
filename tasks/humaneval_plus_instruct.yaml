@@ -1,0 +1,22 @@
+# HumanEval+ with instruct framing - the headline accuracy number for this model.
+#
+# lm-eval ships humaneval_instruct (instruct framing, original tests) and
+# humaneval_plus (EvalPlus's stricter tests, raw completion framing) but not the
+# combination, which is the one that matters for a chat model measured against
+# EvalPlus. This composes them exactly the way lm-eval composes its own
+# mbpp_plus_instruct: take the instruct variant, point it at the EvalPlus dataset.
+#
+#   humaneval_instruct    = humaneval.yaml       + instruct framing
+#   humaneval_plus        = humaneval.yaml       + evalplus/humanevalplus
+#   humaneval_plus_instruct = humaneval_instruct + evalplus/humanevalplus   <- this
+#
+# INSTALLATION
+#   `include:` and the `!function utils....` reference in humaneval_instruct.yaml
+#   resolve relative to the including file's own directory, so this file has to be
+#   installed next to lm-eval's humaneval tasks rather than loaded from this repo
+#   via --include_path. scripts/eval/eval_suite.sh installs it automatically.
+include: humaneval_instruct.yaml
+task: humaneval_plus_instruct
+dataset_path: evalplus/humanevalplus
+metadata:
+  version: 4.0

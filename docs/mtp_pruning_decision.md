@@ -76,8 +76,10 @@ to test against before being trusted):
    from_pretrained` + a single forward pass) before treating the prune run as done — same
    single-instance-before-full-spend discipline as everywhere else in this project.
 
-This is a **documented decision, not yet executed** — no GPU run has been made, no checkpoint
-exists yet to perform this surgery on. When MTP-1 speculative decoding is revisited later (per
+This was a **documented decision, not yet executed** as of 2026-08-23 — no GPU run had been made,
+no checkpoint existed yet to perform this surgery on. **Executed 2026-08-24 — see the addendum
+below for what actually happened** (not quite what was predicted here, but the same outcome).
+When MTP-1 speculative decoding is revisited later (per
 research doc item 4), the natural follow-up experiment is: does re-enabling the *original*
 (unpruned, full 256-expert) MTP head against the *pruned* backbone work at all (hidden_size is
 unchanged by expert pruning, so this is plausible), and only then ask whether the MTP head itself
@@ -102,3 +104,29 @@ Also searched for any published technique for pruning an MoE-based MTP/speculati
 with its backbone (DeepSeek-V3/R1's MTP being the closest real-world precedent for this exact
 structure). **Found none.** The "disable MTP for v1" decision above remains the only
 evidence-based option — not revised.
+
+## Addendum: what actually happened on the real checkpoint (2026-08-24)
+
+Section 2's predicted failure mode — a router-weight shape mismatch on reload — was the reason
+this whole decision exists, but it is **not what actually occurred**. Directly inspected the real
+pruned checkpoint's `model.safetensors`: it contains exactly **1026 tensors**, precisely
+`1811 - 785` (the base checkpoint's total minus its MTP tensor count from the addendum above).
+The MTP head's weights were not saved by `reap-cuda`'s prune/publish step **at all** — not
+present-with-wrong-shape, simply absent — while `config.json` still reported
+`mtp_num_hidden_layers: 1` until `strip_mtp.py`'s config-fix step ran. This is a different failure
+mode than section 2 predicted (missing weights + stale config claiming they exist, rather than
+present weights with a shape mismatch), but it lands in the same place: a checkpoint that would
+not have reloaded correctly as-is, exactly the class of problem this decision was written to
+catch before a real GPU run. `strip_mtp.py` was written and reviewed against this document's
+predicted scenario (shape mismatch) before any real checkpoint existed; running it against the
+real thing surfaced that the actual scenario was different, and it was fixed to handle "zero
+mtp.* tensors present, but config still claims an MTP head" as a legitimate case (config-only
+fix, weights copied through unchanged) rather than an error — see the script's own docstring and
+`docs/layerwise_prune_run_2026-08-24.md`. Reload-verified: the stripped checkpoint loads and
+produces a real forward pass (`logits shape (1, 4, 248320)`, matching the model's actual
+`vocab_size`).
+
+Why weights never got saved is not fully explained here (not investigated — `reap-cuda`'s save
+path for a model class it never instantiates an MTP submodule for at all under `--residency
+cpu_full` is a plausible mechanism, but unconfirmed). Not blocking: the decision and the outcome
+are unaffected either way — the MTP head is absent from the v1 build, which was always the plan.

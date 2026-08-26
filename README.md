@@ -6,12 +6,19 @@ pipeline as this project's prior release
 ([`t-timms/kat-coder-nvfp4`](https://github.com/t-timms/kat-coder-nvfp4)):
 REAP expert pruning, then NVFP4 quantization, served by vLLM.
 
-**Status: in progress.** REAP-compatibility confirmed empirically; a SOTA
-research pass and an independent audit pass are both done; the full bf16
-checkpoint is downloaded; the full prune has not been launched yet (blocked
-on GPU time). This README is written to survive a crash or a context reset
-— see "Where things stand" below for exactly what's done, what's verified,
-and what's next.
+**Status: first evaluated checkpoint exists; SWE-bench ladder is next.**
+REAP-compatibility confirmed empirically; the full REAP prune
+(`--residency cpu_full`, 256→128 experts), MTP-head stripping, and
+GPTQ-NVFP4 quantization all ran to completion (2026-08-24/25). After three
+real upstream gaps were patched locally (one llm-compressor load-time gap,
+two vLLM serving gaps), the checkpoint served end-to-end under vLLM and
+produced its first genuine quality signal: **HumanEval+ 84.15% /
+HumanEval 90.24% / MBPP+ 89.15%** — greedy, instruct framing, full
+706-problem suite in ~12 minutes on the vLLM backend. Next: SWE-bench
+validation ladder (single-instance smoke → bounded sample → full pilot,
+see `ROADMAP.md` step 8). This README is written to survive a crash or a
+context reset — see "Where things stand" below for exactly what's done,
+what's verified, and what's next.
 
 ## Why a new base model
 
@@ -99,17 +106,22 @@ same as the prior release.
   silent degradation — caught before spending any GPU time on it. Decision:
   disable the MTP head for v1 (strip `mtp.*` tensors post-prune,
   reload-verify). Full writeup: `docs/mtp_pruning_decision.md`.
-- **RAM headroom checked before launch — real risk found, mitigated.**
-  REAP calibration under `--residency cpu_full` (the prior build's
-  validated path) needs the full model resident in CPU RAM. Ornith's
-  ~71.9GiB of bf16 weights against this machine's 74GiB available (inside
-  an 80GB `.wslconfig` cap) leaves only ~2-6GiB margin — too tight to
-  launch as-is, unlike the prior build's ~9GB headroom. **Switched to
-  `--residency layerwise`** (block-wise observe + disk offload) instead.
-  Real, disclosed tradeoff: `layerwise`'s bit-for-bit reproducibility
-  hasn't been validated the way `cpu_full` has — flagged as a risk to
-  watch during the real run, not resolved. Full reasoning:
-  `docs/ram_headroom_check.md`.
+- **RAM headroom checked before launch (2026-08-23), then corrected
+  (2026-08-24).** REAP calibration under `--residency cpu_full` (the prior
+  build's validated path) needs the full model resident in CPU RAM.
+  Original estimate: Ornith's ~71.9GiB of bf16 weights against this
+  machine's 74GiB available (inside an 80GB `.wslconfig` cap) left only
+  ~2-6GiB margin — judged too tight, switched to `--residency layerwise`
+  (block-wise observe + disk offload) instead. That switch then surfaced
+  three real `reap-cuda` bugs on this hybrid GDN+attention MoE model (see
+  `docs/layerwise_prune_run_2026-08-24.md`); rather than keep debugging a
+  code path this project doesn't actually need, re-measured the RAM math
+  instead of trusting the original estimate a second time. The real prune
+  run's own logs report an actual **~65.4GiB** weight footprint, not
+  ~71.9GiB — a genuine ~11-12GiB margin against this box's ~77GiB free RAM.
+  **Reverted to `--residency cpu_full`**, confirmed completing the full
+  pipeline cleanly at both reduced and full scale before the real overnight
+  run launched. Full reasoning and the correction: `docs/ram_headroom_check.md`.
 - **Quantization default corrected: GPTQ-NVFP4, not RTN.** The prior
   build's "GPTQ showed zero measurable improvement over RTN" finding does
   not transfer here (different expert topology, 256 vs. 128 experts) — no
@@ -119,35 +131,116 @@ same as the prior release.
 - **Checkpoint downloaded.** Full bf16 snapshot (67GB on disk) of
   `ornith-ai/Ornith-1.5-35B-A3B` at `~/models/Ornith-1.5-35B-A3B`, verified
   complete (33/33 files, no partial-download artifacts).
-- **Prune, MTP-strip, and quantize scripts all staged, none executed.**
-  `scripts/prune/run_prune.sh` (guards on the checkpoint existing first),
-  `scripts/prune/strip_mtp.py` (untested against a real pruned checkpoint —
-  none exists yet), `scripts/quantize/quantize_ornith_gptq.py` (fails fast
-  if the MTP-strip step wasn't done first). **Blocked on GPU go-ahead.**
+- **Full REAP prune completed (2026-08-24).** GPU go-ahead given;
+  small-scale invocation validation ahead of the real run caught three
+  `reap-cuda` bugs before any GPU-hours were spent (two fixed and verified
+  end-to-end under `--residency layerwise`, one found but not fixed one
+  step further into the pipeline) — full incident writeup:
+  `docs/layerwise_prune_run_2026-08-24.md`. `scripts/prune/run_prune.sh`
+  ran under `--residency cpu_full` (see the RAM headroom correction above)
+  to completion in ~48 minutes with zero errors: **256→128 experts, 36GB
+  checkpoint** at `~/reap-stability/ornith_n64_s42/model_.../pruned_models/
+  reap-renorm_true-seed_42-0.50`, `num_experts: 128` and
+  `mtp_num_hidden_layers: 1` confirmed correct in `config.json`.
+- **MTP-head stripped (2026-08-24).** `scripts/prune/strip_mtp.py`, run for
+  the first time against a real checkpoint after being written and reviewed
+  (but untested) the day before. Two assumptions turned out wrong and were
+  fixed against the real thing: the checkpoint layout is a single ~35GiB
+  `model.safetensors` with no index (the script assumed sharding), and the
+  MTP head's weights were already entirely absent from the pruned output —
+  not "present but shape-mismatched" as originally predicted (see
+  `docs/mtp_pruning_decision.md`'s 2026-08-24 addendum). The config fix
+  (`mtp_num_hidden_layers: 0`) was still necessary and correctly applied
+  either way. Reload-verified with a real CPU forward pass, independently
+  confirmed rather than just trusted from the script's exit code: logits
+  shape `(1, 4, 248320)` matches the model's actual `vocab_size` exactly.
+  Output: `<prune dir>-mtp-stripped`, 36GB, 1026 tensors, zero `mtp.*` keys.
+- **GPTQ-NVFP4 quantization completed (2026-08-25, ~5.5 hours).** The
+  mechanism-verification work below preceded it and paid off: the full run
+  at the probed settings completed with zero errors, producing a **12.47
+  GiB** compressed-tensors `nvfp4-pack-quantized` checkpoint at
+  `~/models/ornith-nvfp4a16-gptq` (291 tensors unquantized via the ignore
+  list — routers, gates, embeddings, linear-attention projections).
+  Post-quant surgery produced the serving artifact:
+  `ornith-nvfp4a16-gptq-text-only-norope`, i.e. vision tower stripped
+  (`scripts/prune/strip_vision.py` — switch to transformers' real
+  text-only `Qwen3_5MoeForCausalLM` class, `model.language_model.*` key
+  renames, 333 visual tensors dropped) plus mrope position fields removed
+  from config (text-only serving doesn't use them). What looked like a
+  corrupted quantization right after the run was in fact a load-time bug:
+  see the llm-compressor gap under "Fixed" in `CHANGELOG.md`.
+- **First real accuracy evaluation (2026-08-25), via vLLM.** Getting there
+  required patching three confirmed upstream gaps locally: the
+  llm-compressor 2D-load gap above (silently dropped all quantized expert
+  weights; local patch `scripts/patches/patch_qwen3_5_moe_2d_load.py`,
+  cross-confirmed against llm-compressor PR #3080 which names an Ornith
+  checkpoint as affected), a missing vLLM registry entry for
+  `Qwen3_5MoeForCausalLM`, and three mamba-state classmethods missing from
+  `Qwen3_5ForCausalLMBase` that `IsHybrid` requires (crash on first request,
+  after model load and KV init succeed — the worst possible failure mode to
+  debug cold). Results, greedy/instruct framing via lm-eval-harness on the
+  patched vLLM backend:
+
+  | task | score | n |
+  |---|---|---|
+  | HumanEval+ | **84.15%** | 164 |
+  | HumanEval | 90.24% | 164 |
+  | MBPP+ | 89.15% | 378 |
+
+  kat-coder-16gb scored 96.34/89.63/89.42 on the same tasks — Ornith is
+  lower across the board but same tier, reasonable given more aggressive
+  (50%) REAP pruning on a different base model. Raw results:
+  `~/eval-suite-ornith-vllm/`; launch scripts and task definitions:
+  `scripts/eval/`.
+- **Quantization mechanism verified and ETA measured first (2026-08-24).** `scripts/quantize/quantize_ornith_gptq.py` requires a
+  separate environment (`~/quant-env` — `llmcompressor` isn't installed in
+  the `reap-cuda-env` used for pruning). Before committing ~5 GPU-hours,
+  ran two bounded checks: (1) an 8-sample smoke test confirmed GPTQ
+  actually reaches the fused MoE expert weights — a real open question,
+  since `targets="Linear"` normally matches `nn.Linear` module instances by
+  type, and Ornith's experts are stored as raw fused parameters on a custom
+  container, not individual `nn.Linear` submodules; the log showed correct
+  per-expert quantization (`Quantizing ...experts.9.gate_proj using 8
+  samples`) confirming `moe_calibrate_all_experts=True` does reach them,
+  with zero errors across 5 layers' worth of experts. (2) A second probe at
+  the real calibration settings (256 samples, 2048 seq length) measured
+  actual per-module time: ~3.27s/expert (1.45s gate_proj + 1.45s up_proj +
+  0.37s down_proj), essentially unchanged from the 8-sample measurement —
+  confirming the cost is dominated by the fixed GPTQ solve (Hessian/
+  Cholesky math scaling with matrix dimensions), not calibration data
+  volume. With 40 layers × 128 experts = 5,120 experts needing individual
+  quantization, that's **~4.65 hours for the expert MLPs alone, ~4.75-5
+  hours total** — which the real run then came in just above (~5.5h wall
+  clock). Both probe runs were killed once their measurement purpose was
+  served, not left to run to completion.
 
 ## Planned pipeline
 
 1. ~~Download full bf16 checkpoint (71GB).~~ **Done** — 67GB on disk at
    `~/models/Ornith-1.5-35B-A3B`, verified complete.
-2. **REAP prune at 50% (256→128 experts)** via `scripts/prune/run_prune.sh`
-   — single seed (42), `--residency layerwise` (corrected from `cpu_full`,
-   see "Where things stand"). **Staged, not executed — blocked on GPU
-   go-ahead.**
+2. ~~REAP prune at 50% (256→128 experts)~~ **Done** (2026-08-24) via
+   `scripts/prune/run_prune.sh` — single seed (42), `--residency cpu_full`
+   (see "Where things stand" for the `layerwise` detour and why it was
+   reverted). 36GB checkpoint, config verified, zero errors.
 3. Restore checkpoint files REAP's save path drops (same fix needed last time).
-4. **MTP-head checkpoint surgery** via `scripts/prune/strip_mtp.py` — sets
-   `mtp_num_hidden_layers: 0`, drops `mtp.*` tensors, reload-verifies with a
-   real forward pass. New step vs. the original plan; see "Where things
-   stand" and `docs/mtp_pruning_decision.md`.
-5. **Quantize to NVFP4A16 via GPTQ** (`scripts/quantize/quantize_ornith_gptq.py`
-   — corrected default, see "Where things stand"). Fails fast if step 4
-   wasn't done first.
-6. Strip the vision tower — confirmed genuinely trained, not phantom (see
-   "Where things stand" and `docs/vision_tower_decision.md`); removal is a
-   deliberate scope trade-off, not a free removal of dead weight. REAP
-   itself never touches `model.visual.*`, so this is unaffected by prune
-   timing.
-7. HumanEval+/MBPP+ accuracy suite.
-8. SWE-bench validation ladder: single-instance smoke → small bounded
+4. ~~MTP-head checkpoint surgery~~ **Done** (2026-08-24) via
+   `scripts/prune/strip_mtp.py` — sets `mtp_num_hidden_layers: 0`, drops any
+   `mtp.*` tensors present (turned out there were none — see "Where things
+   stand"), reload-verifies with a real forward pass. New step vs. the
+   original plan; see "Where things stand" and `docs/mtp_pruning_decision.md`.
+5. ~~Quantize to NVFP4A16 via GPTQ~~ **Done** (2026-08-24→25, ~5.6h wall
+   clock per the run log) via `scripts/quantize/quantize_ornith_gptq.py` —
+   12.47 GiB checkpoint, zero errors.
+6. ~~Strip the vision tower~~ **Done** (2026-08-25) via
+   `scripts/prune/strip_vision.py`, plus a config-only mrope strip for
+   text-only serving. Confirmed genuinely trained, not phantom (see
+   `docs/vision_tower_decision.md`) — removal remains a deliberate scope
+   trade-off, not a free removal of dead weight.
+7. ~~HumanEval+/MBPP+ accuracy suite.~~ **Done** (2026-08-25) — HumanEval+
+   84.15%, HumanEval 90.24%, MBPP+ 89.15%; first genuine quality signal of
+   the whole pipeline, served through locally-patched vLLM (three upstream
+   gaps fixed along the way — see "Where things stand").
+8. **SWE-bench validation ladder**: single-instance smoke → small bounded
    sample → full 50-instance pilot. Never a straight jump to the full pilot
    on unvalidated evidence — same discipline the prior project used
    throughout, including reversing a config that looked good on one

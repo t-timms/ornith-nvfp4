@@ -23,12 +23,20 @@ WHAT THIS SCRIPT DOES
        which one (or both) the model class actually reads at load time and
        getting this wrong silently would defeat the whole point.
     2. Drops every tensor whose key starts with "mtp." (or contains
-       ".mtp." for wrapped naming) from the safetensors shards and from
-       model.safetensors.index.json's weight_map. Only shards that
-       actually contain an mtp.* tensor are rewritten; shards with none
-       are hard-linked (falls back to copy across filesystems) rather than
-       rewritten, to avoid wasting I/O on ~40 backbone-only shards for one
-       small head.
+       ".mtp." for wrapped naming) from the checkpoint's weights - handles
+       both a sharded checkpoint (model.safetensors.index.json + multiple
+       shards; only shards actually containing an mtp.* tensor are
+       rewritten, the rest hard-linked/copied unchanged) and a single-file
+       one (one model.safetensors, no index - what this project's own
+       cpu_full prune run actually produced, ~35GiB, apparently under
+       whatever size threshold triggers sharding). If zero mtp.* tensors
+       are found at all, that is NOT an error: confirmed real on this
+       project's first real pruned checkpoint (2026-08-24) that reap-cuda's
+       prune/publish step can omit the MTP head's weights entirely while
+       config.json still claims mtp_num_hidden_layers>0 (base checkpoint:
+       1811 tensors incl. 785 mtp.*; pruned output: exactly 1026 =
+       1811-785). In that case the weights are copied through unchanged
+       and only the config fix from step 1 does any real work.
     3. Reload-verifies: AutoConfig + the correct Auto class
        (ForImageTextToText if the architecture name says so, else
        ForCausalLM) .from_pretrained on the stripped checkpoint, then one
@@ -38,17 +46,19 @@ WHAT THIS SCRIPT DOES
        (see quantize_ornith_gptq.py's own fail-fast check, which assumes
        THIS script already ran).
 
-STATUS: UNTESTED. No pruned checkpoint exists yet as of 2026-08-23 - the
-    real REAP prune run is still blocked on GPU time / user go-ahead (see
-    ROADMAP.md). The tensor-name patterns here were checked against the
-    BASE checkpoint's real model.safetensors.index.json
-    (ornith-ai/Ornith-1.5-35B-A3B), not assumed, but this script itself has
-    never been run against a real pruned checkpoint. Treat step 3's
-    reload-verify as load-bearing - do not skip it (--skip-verify exists
-    only for fast iteration on step 1/2's logic, never for a real run) and
-    do not treat this script's exit 0 as sufficient proof on the first real
-    invocation without independently re-checking the printed forward-pass
-    output shape.
+STATUS: Run successfully 2026-08-24 against this project's first real
+    pruned checkpoint (`--residency cpu_full`, seed 42, 50% compression -
+    see docs/layerwise_prune_run_2026-08-24.md). Two assumptions written
+    before any real checkpoint existed turned out wrong and were fixed
+    against the real thing rather than left as documented-but-untested:
+    (a) the checkpoint layout assumed sharding with an index.json - the
+    real output is a single ~35GiB model.safetensors with no index; (b)
+    the MTP head's weights were assumed "untouched but shape-mismatched"
+    per docs/mtp_pruning_decision.md - empirically they are absent
+    entirely from the pruned output, not mismatched (see point 2 above).
+    Both are handled now, not just assumed. Step 3's reload-verify remains
+    load-bearing - do not skip it (--skip-verify exists only for fast
+    iteration on step 1/2's logic, never for a real run).
 
 Usage:
     python3 scripts/prune/strip_mtp.py \
@@ -98,22 +108,93 @@ def strip_config(src_cfg_path: pathlib.Path, dst_cfg_path: pathlib.Path) -> None
     dst_cfg_path.write_text(json.dumps(cfg, indent=2))
 
 
+def strip_single_file(checkpoint: pathlib.Path, out_dir: pathlib.Path) -> None:
+    """Handle a checkpoint saved as one model.safetensors file, no index.
+
+    Small enough total size (this project's pruned Ornith checkpoint is
+    ~35GiB) apparently doesn't get sharded by reap-cuda's save path - no
+    model.safetensors.index.json is written at all. HF's from_pretrained
+    loads single-file checkpoints fine without one, so the fix mirrors
+    strip_shards' filtering logic but writes a single output file and
+    skips the index entirely, rather than assuming a sharded layout that
+    doesn't match what a real prune run actually produced.
+    """
+    src = checkpoint / "model.safetensors"
+
+    with safe_open(src, framework="pt") as f:
+        all_keys = list(f.keys())
+        mtp_keys = {k for k in all_keys if is_mtp_key(k)}
+        tensors = None if not mtp_keys else {
+            k: f.get_tensor(k) for k in all_keys if k not in mtp_keys
+        }
+
+    if tensors is None:
+        # No mtp.* tensors at the weight level at all - confirmed real on this
+        # project's checkpoint (2026-08-24): reap-cuda's prune/publish step
+        # never wrote the MTP head's weights in the first place (base
+        # checkpoint has 1811 tensors incl. 785 mtp.*; the pruned output has
+        # exactly 1026 = 1811-785, matching to the tensor). This differs from
+        # what docs/mtp_pruning_decision.md assumed ("untouched but
+        # shape-mismatched") - it's "absent but config-mismatched" instead,
+        # which strip_config's fix above still correctly resolves. Nothing to
+        # filter here; hardlink the file through unchanged rather than
+        # treating this as an error.
+        dst = out_dir / "model.safetensors"
+        try:
+            os.link(src, dst)
+        except OSError:
+            shutil.copy2(src, dst)
+        total_size = dst.stat().st_size
+        print(
+            f"  NOTE: no mtp.* tensors present in model.safetensors - the MTP head's "
+            f"weights were already absent from this checkpoint (only the config still "
+            f"claimed mtp_num_hidden_layers>0). Linked model.safetensors unchanged: "
+            f"{len(all_keys)} tensors, {total_size / 2**30:.2f} GiB.",
+            flush=True,
+        )
+        return
+
+    print(f"  found {len(mtp_keys)} mtp.* tensors to drop (single-file checkpoint, no index)", flush=True)
+    save_file(tensors, str(out_dir / "model.safetensors"))
+    total_size = (out_dir / "model.safetensors").stat().st_size
+    print(f"  wrote model.safetensors: {len(tensors)} tensors, {total_size / 2**30:.2f} GiB", flush=True)
+
+
 def strip_shards(checkpoint: pathlib.Path, out_dir: pathlib.Path) -> None:
     index_path = checkpoint / "model.safetensors.index.json"
     if not index_path.is_file():
-        raise SystemExit(f"no model.safetensors.index.json at {checkpoint} - unexpected layout")
+        single_file = checkpoint / "model.safetensors"
+        if single_file.is_file():
+            strip_single_file(checkpoint, out_dir)
+            return
+        raise SystemExit(f"no model.safetensors.index.json or model.safetensors at {checkpoint} - unexpected layout")
 
     index = json.loads(index_path.read_text())
     weight_map: dict[str, str] = index["weight_map"]
 
     mtp_keys = {k for k in weight_map if is_mtp_key(k)}
     if not mtp_keys:
-        raise SystemExit(
-            "no mtp.* tensors found in the weight_map - either the naming "
-            "differs from what mtp_pruning_decision.md documented, or this "
-            "checkpoint was already stripped. Aborting rather than "
-            "silently doing nothing."
+        # See strip_single_file's matching branch: confirmed real on this
+        # project's checkpoint (2026-08-24) that reap-cuda's prune/publish
+        # step can omit the MTP head's weights entirely while config.json
+        # still claims mtp_num_hidden_layers>0 - not an error, just nothing
+        # to filter at the tensor level. Copy every shard through unchanged.
+        print(
+            "  NOTE: no mtp.* tensors found in the weight_map - the MTP head's weights "
+            "were already absent from this checkpoint (only the config still claimed "
+            "mtp_num_hidden_layers>0). Linking all shards through unchanged.",
+            flush=True,
         )
+        for shard_name in sorted(set(weight_map.values())):
+            src_shard = checkpoint / shard_name
+            dst_shard = out_dir / shard_name
+            try:
+                os.link(src_shard, dst_shard)
+            except OSError:
+                shutil.copy2(src_shard, dst_shard)
+        shutil.copy2(index_path, out_dir / "model.safetensors.index.json")
+        print(f"  linked {len(set(weight_map.values()))} shards, {len(weight_map)} tensors unchanged", flush=True)
+        return
     print(f"  found {len(mtp_keys)} mtp.* tensors to drop", flush=True)
 
     shards_with_mtp = {weight_map[k] for k in mtp_keys}

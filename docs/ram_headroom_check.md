@@ -1,5 +1,13 @@
 # RAM headroom check for the Ornith REAP prune (2026-08-23)
 
+> **Superseded 2026-08-24 — see the addendum at the bottom.** The ~71.9 GiB
+> weight estimate below was a param-count calculation, not a measurement. The
+> real prune run's own logs report the actual loaded footprint at **~65.4 GiB**
+> - meaningfully smaller, and `--residency cpu_full` turned out to be
+> perfectly viable. `run_prune.sh` uses `cpu_full` again as of 2026-08-24. The
+> reasoning below is kept as-is for the record; it was a sound precaution
+> given the information available at the time.
+
 Checked before launching the real prune run, per this project's "validate before
 spending a multi-hour run" standing practice - not a launch-time surprise.
 
@@ -62,3 +70,35 @@ determinism *before* trusting a seed-to-seed comparison run under it.
   memory consumers (or temporarily raising `.wslconfig`'s cap, if total system
   RAM allows) buys enough room to go back to `cpu_full` - not evaluated here
   since it wasn't needed for the `layerwise` recommendation.
+
+## Addendum 2026-08-24: the estimate was too conservative, reverted to `cpu_full`
+
+The `layerwise` recommendation above was never wrong given the information
+available on 2026-08-23 — it was a reasonable precaution against an
+unverified worst case. But `layerwise` residency then surfaced three real
+bugs in `reap-cuda` on Ornith's specific hybrid GDN+attention MoE
+architecture (attention-mask handling, and two separate spots that read/
+mutate expert weights directly, bypassing `accelerate`'s offload hooks —
+full writeup: `docs/layerwise_prune_run_2026-08-24.md`). Rather than keep
+patching bugs in a code path this project doesn't need, the RAM estimate
+itself was re-checked empirically instead of taken on faith a second time:
+
+- **Actual measured weight footprint under `cpu_full`: ~65.39 GiB** (logged
+  directly by `reap-cuda`'s own `reap.prune: Loaded model weight footprint`
+  line), not the ~71.9 GiB param-count estimate above. Against ~77 GiB free
+  RAM, that is a genuine **~11-12 GiB margin** — comfortable, not tight —
+  plus 16 GiB of configured swap as a further backstop.
+- Confirmed twice: once at reduced scale (a 2-batch smoke invocation
+  completed the entire prune successfully), and once at full scale (the
+  real 64-batch, 40-block run stayed at ~75 GiB available RAM throughout
+  before being intentionally stopped for the `layerwise` bug investigation
+  — not stopped because of any memory pressure).
+- `cpu_full` is also KAT-Coder's own "validated deterministic path" (see
+  above) — reverting to it resolves the reproducibility question this doc
+  flagged as unchecked for `layerwise`, rather than leaving it open.
+
+**Current state**: `scripts/prune/run_prune.sh` uses `--residency cpu_full`
+again. The `layerwise` fixes made during the investigation remain in the
+`reap-cuda` working tree (uncommitted) in case a future, larger model ever
+needs `layerwise` residency for real — see
+`docs/layerwise_prune_run_2026-08-24.md` for what's fixed and what isn't.

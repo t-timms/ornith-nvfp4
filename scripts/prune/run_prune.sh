@@ -6,20 +6,36 @@
 # stability question matters later, add a second --seed run reusing this
 # same --artifacts-dir the way prune_both_seeds.sh does.
 #
-# RESIDENCY: layerwise, not cpu_full, DELIBERATELY DIFFERENT FROM
-# KAT-CODER'S VALIDATED PATH. See docs/ram_headroom_check.md for the full
-# reasoning: cpu_full pins the full bf16 model in host RAM, and Ornith's
-# ~71.9GB of bf16 weights (35.95B params) leaves only ~2-6GB of headroom in
-# this box's 80GB WSL memory cap - real OOM risk, not a comfortable margin.
-# `reap prune layerwise --help` documents `layerwise` as block-wise observe
-# + disk offload (not a full CPU pin) - the safer choice here. TRADEOFF,
-# NOT FREE: KAT-Coder's scripts (see stability_run.sh, seqlen_test.sh)
-# chose cpu_full specifically because it's "the validated deterministic
-# path" - layerwise's determinism/reproducibility has NOT been verified by
-# this project. If bit-for-bit reproducibility across reruns turns out to
-# matter later (e.g. a stability re-run), re-verify that property under
-# layerwise before relying on it, don't assume it transfers from cpu_full's
-# validation.
+# RESIDENCY: cpu_full, REVERSED FROM THE ORIGINAL layerwise CHOICE - see
+# docs/layerwise_prune_run_2026-08-24.md for the full incident writeup.
+# layerwise was tried first (block-wise observe + disk offload) specifically
+# to avoid cpu_full's RAM risk (see docs/ram_headroom_check.md's original
+# ~71.9GB-weights/~2-6GB-headroom estimate). It uncovered three real
+# reap-cuda bugs on this hybrid GDN+attention model, all bypassing
+# accelerate's forward-hook-based on-demand weight materialization for
+# disk-offloaded blocks: (1) attention_mask captured once from block 0 and
+# wrongly replayed into every block regardless of layer_type - FIXED, see
+# layerwise_observer.py's _capture_extra_type_masks; (2) MoE expert weights
+# read directly after accelerate had already re-offloaded a disk-backed
+# block back to a meta placeholder - FIXED, see weight_cache.py's
+# _materialize_offloaded/_release_offloaded, which bracket the read with
+# accelerate's own AlignDevicesHook.pre_forward/post_forward; both (1) and
+# (2) verified end-to-end across a full 40-block pass. (3) the same class
+# of bug one step further into the pipeline, in the pruning/mutation step
+# (model_adapters.py's slice_experts mutating .data directly) - found, NOT
+# fixed. Rather than keep finding and fixing bugs in a code path this
+# project doesn't need, switched to cpu_full: it never creates meta-tensor
+# placeholders in the first place (no disk offload), sidestepping this
+# entire bug class by construction. Empirically validated before the
+# switch: real loaded weight footprint was ~65.4GiB (not ~71.9GB as
+# estimated), leaving a real ~11-12GB margin against this box's 77GB free
+# RAM - confirmed comfortable at both reduced scale and the real 64-batch
+# scale (stayed ~75GB available throughout). cpu_full is also KAT-Coder's
+# original "validated deterministic path" (see stability_run.sh,
+# seqlen_test.sh) - reproducibility is a solved question here, unlike
+# layerwise's never-verified status. Residency mode is a memory-staging
+# mechanism only - it has no effect on the REAP algorithm, calibration
+# data, or resulting model quality.
 #
 # MTP HEAD: not specially handled here. reap-cuda's prune loop never
 # touches `mtp.*` weights (confirmed by reading model_adapters.py - see
@@ -47,7 +63,17 @@ if [ ! -d "${MODEL}" ] || [ -z "$(find "${MODEL}" -maxdepth 1 -name '*.safetenso
   exit 1
 fi
 
-existing=$(find "${RUNDIR}" -maxdepth 1 -type d -name 'reap-*' 2>/dev/null | head -1)
+skip_search() {
+  # reap-cuda nests the published checkpoint several levels down
+  # (model_<hash>/dataset_<hash>/pruned_models/reap-<name>), not directly
+  # under --artifacts-dir - maxdepth 1 here would never match a real output
+  # (confirmed against an actual published checkpoint from tonight's
+  # reduced-scale validation run). Search deep enough to find it regardless
+  # of minor internal reap-cuda layout changes.
+  find "${RUNDIR}" -maxdepth 6 -type d -name 'reap-*' 2>/dev/null | head -1
+}
+
+existing=$(skip_search)
 if [ -n "${existing}" ] && [ -n "$(find "${existing}" -name '*.safetensors' 2>/dev/null | head -1)" ]; then
   echo "skip: pruned checkpoint already exists at ${existing}"
   echo "(run scripts/prune/strip_mtp.py on it next, if not already done)"
@@ -55,7 +81,7 @@ if [ -n "${existing}" ] && [ -n "$(find "${existing}" -name '*.safetensors' 2>/d
 fi
 
 echo "=== pruning Ornith-1.5-35B-A3B seed ${SEED} @ $(date -Iseconds) ==="
-echo "    residency=layerwise (see script header - deliberate deviation from cpu_full)"
+echo "    residency=cpu_full (see script header - switched from layerwise after finding an unfixed reap-cuda bug)"
 
 "${BIN}" prune layerwise \
   --model "${MODEL}" \
@@ -63,7 +89,7 @@ echo "    residency=layerwise (see script header - deliberate deviation from cpu
   --compression-ratio "${RATIO}" \
   --prune-method reap \
   --observe-backend bmm \
-  --residency layerwise \
+  --residency cpu_full \
   --batch-size 1 \
   --batches-per-category 64 \
   --model-max-length 2048 \
@@ -78,7 +104,7 @@ if grep -q "Aggregate cache hit" "${log}"; then
   echo "    observation cache REUSED (no recalibration)"
 fi
 
-out=$(find "${RUNDIR}" -maxdepth 1 -type d -name 'reap-*' 2>/dev/null | head -1)
+out=$(skip_search)
 if [ -n "${out}" ] && [ -n "$(find "${out}" -name '*.safetensors' 2>/dev/null | head -1)" ]; then
   echo "    rc=${rc} checkpoint OK: ${out}"
   du -sh "${out}"
