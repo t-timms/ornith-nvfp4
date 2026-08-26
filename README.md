@@ -6,19 +6,22 @@ pipeline as this project's prior release
 ([`t-timms/kat-coder-nvfp4`](https://github.com/t-timms/kat-coder-nvfp4)):
 REAP expert pruning, then NVFP4 quantization, served by vLLM.
 
-**Status: first evaluated checkpoint exists; SWE-bench ladder is next.**
-REAP-compatibility confirmed empirically; the full REAP prune
-(`--residency cpu_full`, 256→128 experts), MTP-head stripping, and
-GPTQ-NVFP4 quantization all ran to completion (2026-08-24/25). After three
-real upstream gaps were patched locally (one llm-compressor load-time gap,
-two vLLM serving gaps), the checkpoint served end-to-end under vLLM and
-produced its first genuine quality signal: **HumanEval+ 84.15% /
-HumanEval 90.24% / MBPP+ 89.15%** — greedy, instruct framing, full
-706-problem suite in ~12 minutes on the vLLM backend. Next: SWE-bench
-validation ladder (single-instance smoke → bounded sample → full pilot,
-see `ROADMAP.md` step 8). This README is written to survive a crash or a
-context reset — see "Where things stand" below for exactly what's done,
-what's verified, and what's next.
+**Status: released and fully evaluated, including agentic.** The
+pipeline is complete: REAP 50% prune (256→128 experts), MTP-head strip,
+GPTQ-NVFP4A16 quantization, vision-tower strip — 12.47 GiB, served
+end-to-end by vLLM after three real upstream gaps were patched locally.
+Quality: **HumanEval+ 84.15% / HumanEval 90.24% / MBPP+ 89.15%** (greedy,
+instruct framing), and **SWE-bench Verified 22/50 = 44.0% resolved**
+(81.5% resolved-of-completed, official harness, zero infra failures)
+via `mini-swe-agent`'s bash-only scaffold at a 49K-token context ceiling —
+on the same 50-instance slice as the prior release's 52.0%, making it an
+apples-to-apples comparison: the entire gap is submission rate, not patch
+quality (see `docs/model_card.md` for the full breakdown). Weights and
+card are live at
+[`Ttimms/Ornith-1.5-35B-A3B-REAP-50-NVFP4A16`](https://huggingface.co/Ttimms/Ornith-1.5-35B-A3B-REAP-50-NVFP4A16).
+This README is written to survive a crash or a context reset — see
+"Where things stand" below for exactly what's done, what's verified, and
+what's next.
 
 ## Why a new base model
 
@@ -45,7 +48,7 @@ proven to work) and a validated-safe pruning ratio, not a benchmark-proven
 choice — that proof only comes from building and measuring it ourselves,
 same as the prior release.
 
-## Where things stand (2026-08-23)
+## Where things stand (2026-08-26)
 
 - **Exhaustive base-model survey done.** Compared Ornith-1.5-35B-A3B against
   the full Qwen3-Coder family and a broader HF search. No candidate beats
@@ -192,6 +195,28 @@ same as the prior release.
   (50%) REAP pruning on a different base model. Raw results:
   `~/eval-suite-ornith-vllm/`; launch scripts and task definitions:
   `scripts/eval/`.
+- **SWE-bench Verified ladder completed and graded (2026-08-26).**
+  Smoke → 10-instance gate → full 50-instance pilot, all rungs passed
+  (`scripts/swebench/run_ladder_night.sh`; overnight run finished
+  50/50 instances, 96.5% prefix-cache hit rate, served at the 49,152
+  window with a 54,067-token KV budget). Graded with the official harness
+  (`scripts/swebench/grade_pilot.sh`): **22/50 = 44.0% resolved, 22/27 =
+  81.5% resolved-of-completed, zero infra or eval errors.** Rollout
+  breakdown: 27 Submitted / 15 ContextWindowExceeded / 6 LimitsExceeded /
+  2 RepeatedFormatError. The 50-instance slice is identical to the prior
+  release's 52.0% run, so the comparison is same-instance under the same
+  scaffold, window, and step limit: the prior release completed 33
+  instances (26 resolved, 81.25% of completed) vs this build's 27 (22
+  resolved, 81.5% of completed) — the headline gap is entirely submission
+  rate, not resolve quality; 18 instances were resolved by both builds.
+  Sampling followed the checkpoint's own `generation_config.json`
+  (temperature 1.0 / top_p 0.95 / top_k 20), flagged as unvalidated in
+  `scripts/swebench/ornith_overrides_ladder.yaml`. Model card updated and
+  re-uploaded to the Hub with the full section.
+- **Released on the Hugging Face Hub (2026-08-25).** Weights (12.47 GiB),
+  config, and tokenizer live at
+  `Ttimms/Ornith-1.5-35B-A3B-REAP-50-NVFP4A16`; card is
+  `docs/model_card.md` uploaded as `README.md`.
 - **Quantization mechanism verified and ETA measured first (2026-08-24).** `scripts/quantize/quantize_ornith_gptq.py` requires a
   separate environment (`~/quant-env` — `llmcompressor` isn't installed in
   the `reap-cuda-env` used for pruning). Before committing ~5 GPU-hours,
@@ -240,12 +265,15 @@ same as the prior release.
    84.15%, HumanEval 90.24%, MBPP+ 89.15%; first genuine quality signal of
    the whole pipeline, served through locally-patched vLLM (three upstream
    gaps fixed along the way — see "Where things stand").
-8. **SWE-bench validation ladder**: single-instance smoke → small bounded
-   sample → full 50-instance pilot. Never a straight jump to the full pilot
-   on unvalidated evidence — same discipline the prior project used
-   throughout, including reversing a config that looked good on one
-   instance and turned out to regress the score at full-pilot scale. Check
-   `docs/serving_notes.md` for known-before-launch vLLM flags first.
+8. ~~SWE-bench validation ladder~~ **Done** (2026-08-26) — smoke →
+   10-instance gate → full 50-instance pilot, then graded with the official
+   harness: **22/50 = 44.0% resolved (81.5% of completed), zero infra
+   failures** — same-instance comparison to the prior release's 52.0%;
+   the gap is submission rate, not patch quality. Never a straight jump to
+   the full pilot on unvalidated evidence — same discipline the prior
+   project used throughout, including reversing a config that looked good
+   on one instance and turned out to regress the score at full-pilot scale.
+   Harness: `scripts/swebench/`.
 
 ## Relationship to the prior release
 
