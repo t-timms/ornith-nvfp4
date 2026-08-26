@@ -261,10 +261,10 @@ below are the reopen list, in rough priority order.
 - **Machine housekeeping (do on reopen):** run
   `wsl --setdefault Ubuntu-24.04` in PowerShell (one line, nothing
   deleted — it just stops new terminals opening into the empty 26.04
-  distro; see HANDOFF.md §0), and decide on the ~57 idle swebench
-  Docker eval images (51.3 GB reclaimable; the harness re-pulls them
-  automatically on any future grading run, so deletion only costs
-  re-download time).
+  distro; see HANDOFF.md §0). The 57 idle swebench Docker eval images
+  were deleted at close (2026-08-26, 51.3 GB reclaimed; the harness
+  re-pulls them automatically on any future grading run — deletion only
+  costs re-download time).
 - The KAT-Coder comparison item below is now unblocked — this build has
   its validated SWE-bench score (44.0%, same-instance vs KAT's 52.0%).
 
