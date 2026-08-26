@@ -221,7 +221,7 @@ what shipped) — this is where the project is headed and why, kept current.
    **2026-08-26 completion.** The chained overnight run relaunched clean
    after the gaming shutdown and finished all rungs: Gate A 1/1 Submitted;
    Gate B 10/10 instances, 8/10 nonempty; pilot 50/50 instances, 27/50
-   nonempty (27 Submitted / 15 ContextWindowExceeded / 6 LimitsExceeded /
+   nonempty (27 Submitted / 15 ContextWindowExceededError / 6 LimitsExceeded /
    2 RepeatedFormatError), 96.5% prefix-cache hit rate, served at the
    49,152 window (54,067-token KV budget). Graded with the official
    harness (`scripts/swebench/grade_pilot.sh`): **22/50 = 44.0% resolved,

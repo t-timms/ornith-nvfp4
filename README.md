@@ -202,7 +202,7 @@ same as the prior release.
   window with a 54,067-token KV budget). Graded with the official harness
   (`scripts/swebench/grade_pilot.sh`): **22/50 = 44.0% resolved, 22/27 =
   81.5% resolved-of-completed, zero infra or eval errors.** Rollout
-  breakdown: 27 Submitted / 15 ContextWindowExceeded / 6 LimitsExceeded /
+  breakdown: 27 Submitted / 15 ContextWindowExceededError / 6 LimitsExceeded /
   2 RepeatedFormatError. The 50-instance slice is identical to the prior
   release's 52.0% run, so the comparison is same-instance under the same
   scaffold, window, and step limit: the prior release completed 33
@@ -213,7 +213,7 @@ same as the prior release.
   (temperature 1.0 / top_p 0.95 / top_k 20), flagged as unvalidated in
   `scripts/swebench/ornith_overrides_ladder.yaml`. Model card updated and
   re-uploaded to the Hub with the full section.
-- **Released on the Hugging Face Hub (2026-08-25).** Weights (12.47 GiB),
+- **Released on the Hugging Face Hub (2026-08-26, 00:27 CT).** Weights (12.47 GiB),
   config, and tokenizer live at
   `Ttimms/Ornith-1.5-35B-A3B-REAP-50-NVFP4A16`; card is
   `docs/model_card.md` uploaded as `README.md`.
