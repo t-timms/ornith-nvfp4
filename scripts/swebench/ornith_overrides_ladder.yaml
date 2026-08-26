@@ -1,0 +1,94 @@
+# Ornith agentic config - SMOKE rung of the validation ladder (ROADMAP step 8).
+#
+# LADDER RUNG CONFIG (2026-08-26 night): step_limit 65 raised from the smoke
+# rung's 40 on direct evidence - the smoke instance exhausted 40 steps while
+# progressing sanely (no loop), matching the prior project's finding that its
+# reference scaffold averages ~87 LM calls/instance. Window stays 32K because
+# Ornith's measured KV ceiling is 40,366 tokens total (1.23x at 32K); workers
+# are serialized to 1 to keep every request unpreempted and prefix-cache viable.
+# smoke run has an explicit, named config; nothing in it is promoted until the
+# ladder (single-instance smoke -> bounded sample -> full 50 pilot) says so.
+# Same discipline as kat_overrides_sota.yaml's header documents for the prior
+# project - including its lesson that a promising single-instance result is NOT
+# promotion evidence.
+#
+# Sources for every number:
+# - step_limit 65: raised from the smoke rung's 40 on direct evidence — the
+#   smoke instance exhausted 40 steps while progressing sanely (no loop), and
+#   the prior project's reference scaffold averages ~87 LM calls/instance.
+#   Window stays 32768 because Ornith's measured KV ceiling is 40,366 tokens
+#   total (1.23x concurrency at 32K); run_ladder_night.sh serializes workers
+#   to 1 so every request stays unpreempted and prefix-cache viable.
+# - temperature 1.0 / top_p 0.95 / top_k 20: the checkpoint's own
+#   generation_config.json (the vendor-documented sampling recommendation).
+#   KAT precedent warns this class of "base model's documented params" choice
+#   REGRESSED its full-pilot score there - adopted here as the starting point,
+#   to be validated or replaced by the same ladder, never silently changed.
+# - max_tokens 3072, observation truncation at 5000 chars, format error
+#   template: carried from the prior project's validated config unchanged.
+
+agent:
+  step_limit: 65
+
+model:
+  model_name: "hosted_vllm/ornith-16gb"
+  cost_tracking: "ignore_errors"
+  model_kwargs:
+    api_base: "http://localhost:8000/v1"
+    api_key: "EMPTY"
+    temperature: 1.0
+    top_p: 0.95
+    top_k: 20
+    max_tokens: 3072
+    drop_params: true
+
+  observation_template: |
+    {% if output.exception_info -%}
+    <exception>{{output.exception_info}}</exception>
+    {% endif -%}
+    <returncode>{{output.returncode}}</returncode>
+    {% if output.output | length < 5000 -%}
+    <output>
+    {{ output.output -}}
+    </output>
+    {%- else -%}
+    <warning>
+    The output of your last command was too long.
+    Please try a different command that produces less output.
+    If you're looking at a file you can try use head, tail or sed to view a smaller number of lines selectively.
+    If you're using grep or find and it produced too much output, you can use a more selective search pattern.
+    If you really need to see something from the full command's output, you can redirect output to a file and then search in a file.
+    </warning>
+    {%- set elided_chars = output.output | length - 5000 -%}
+    <output_head>
+    {{ output.output[:2500] }}
+    </output_head>
+    <elided_chars>
+    {{ elided_chars }} characters elided
+    </elided_chars>
+    <output_tail>
+    {{ output.output[-2500:] }}
+    </output_tail>
+    {%- endif %}
+
+  format_error_template: |
+    {% if finish_reason is defined and (finish_reason == "length" or (finish_reason == "tool_calls" and not has_tool_calls)) -%}
+    Your previous response reached the output token limit (finish_reason={{ finish_reason }}) before you produced a tool call, so it was cut off. Respond more concisely and finish with exactly one bash tool call. If you need to think more, do so briefly.
+    {%- else -%}
+    Tool call error:
+
+    <error>
+    {{error}}
+    </error>
+
+    Here is general guidance on how to submit correct toolcalls:
+
+    Every response needs to use the 'bash' tool at least once to execute commands.
+
+    Call the bash tool with your command as the argument:
+    - Tool: bash
+    - Arguments: {"command": "your_command_here"}
+
+    If you have completed your assignment, please consult the first message about how to
+    submit your solution (you will not be able to continue working on this task after that).
+    {%- endif %}

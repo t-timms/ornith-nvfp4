@@ -202,6 +202,22 @@ what shipped) — this is where the project is headed and why, kept current.
    (`--max-cudagraph-capture-size` mamba-cache assertion) rather than
    debugging them cold.
 
+   **2026-08-26 night, rung progress.** Smoke instance ran end-to-end:
+   server stable, qwen3_xml tool parsing confirmed viable through the real
+   litellm path (preflight), trajectory saved, clean teardown. Two config
+   facts measured, both now recorded here instead of guessed: hybrid-KV
+   ceiling on this card is ~40-61K tokens total depending on desktop VRAM
+   contention (1.23-1.85x concurrency at a 32K window), so workers are
+   serialized to protect prefix caching; and prefix caching WORKS in align
+   mode - 93.9% hit rate over the smoke rollout (307,296/327,137), closing
+   the serving_notes open question with evidence. The smoke instance
+   exhausted step_limit 40 while progressing sanely (no loop), matching the
+   prior project's reference-scaffold data (~87 calls/instance); the ladder
+   config raises it to 65 on that evidence. Overnight chained run launched
+   (scripts/swebench/run_ladder_night.sh): 1-instance submission check ->
+   gated -> 10-instance bounded sample -> gated -> 50-instance pilot,
+   gates on patch mechanics only, scoring deferred to human review.
+
 ## Longer-horizon / not scheduled
 
 - **MTP-1 speculative decoding** (`--speculative-config '{"method": "mtp", ...}'`)
