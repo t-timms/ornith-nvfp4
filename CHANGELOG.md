@@ -9,6 +9,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **GGUF + pruned-bf16 releases (2026-08-29).** `Ttimms/Ornith-1.5-35B-A3B-REAP-50-GGUF` (Q4_K_M / Q5_K_M / Q6_K / Q8_0) and `Ttimms/Ornith-1.5-35B-A3B-REAP-50-bf16` (pruned source, 38 GB) are now published alongside the NVFP4A16 release. `convert_hf_to_gguf.py --no-mtp` on current llama.cpp (`qwen3_5_moe` hybrid; the REAP prune keeps `mtp_num_hidden_layers: 1` but carries no MTP tensors, so `--no-mtp` is required), verified via `llama-server`. F16 GGUF was lost in a disk-full recovery — re-quant from the bf16 source if it's needed. Model tree: NVFP4A16 + GGUF → `quantized` → `-bf16` → `finetune` → `ornith-ai/Ornith-1.5-35B-A3B`. Standing rule: every model ships GGUF + bf16 alongside NVFP4 (MLX is Mac-gated).
 - SWE-bench Verified validation ladder completed end-to-end (smoke → 10-instance gate → 50-instance pilot) and graded with the official harness: **22/50 = 44.0% resolved, 81.5% resolved-of-completed, zero infra failures**, via `mini-swe-agent`'s bash-only scaffold at a 49K-token window — the same 50-instance slice as the prior release's 52.0%, an apples-to-apples comparison (`scripts/swebench/run_ladder_night.sh`, `scripts/swebench/grade_pilot.sh`).
 - Model card updated with the measured SWE-bench section, the serving context ceiling (49K window; 40–61K-token total KV budget depending on desktop VRAM contention), and the sampling disclosure; re-uploaded to the Hub.
 - Repo created. Base-model selection research (`docs/base_model_selection.md`):

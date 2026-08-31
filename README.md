@@ -19,6 +19,19 @@ apples-to-apples comparison: the entire gap is submission rate, not patch
 quality (see `docs/model_card.md` for the full breakdown). Weights and
 card are live at
 [`Ttimms/Ornith-1.5-35B-A3B-REAP-50-NVFP4A16`](https://huggingface.co/Ttimms/Ornith-1.5-35B-A3B-REAP-50-NVFP4A16).
+
+**Formats (all live on HF, standing rule: every model ships GGUF + bf16
+source alongside NVFP4):**
+[`-NVFP4A16`](https://huggingface.co/Ttimms/Ornith-1.5-35B-A3B-REAP-50-NVFP4A16)
+(vLLM, the depth artifact) ·
+[`-GGUF`](https://huggingface.co/Ttimms/Ornith-1.5-35B-A3B-REAP-50-GGUF)
+(Q4_K_M / Q5_K_M / Q6_K / Q8_0, llama.cpp / LM Studio, shipped 2026-08-29;
+`convert_hf_to_gguf.py --no-mtp`, verified via `llama-server`) ·
+[`-bf16`](https://huggingface.co/Ttimms/Ornith-1.5-35B-A3B-REAP-50-bf16)
+(pruned source, for anyone making their own AWQ / EXL2 / MLX / custom GGUF).
+MLX is Mac-gated — this box can't produce it. Model tree: NVFP4A16 + GGUF →
+`quantized` of → `-bf16` → `finetune` of → `ornith-ai/Ornith-1.5-35B-A3B`.
+
 This README is written to survive a crash or a context reset — see
 "Where things stand" below for exactly what's done, what's verified, and
 what's next.

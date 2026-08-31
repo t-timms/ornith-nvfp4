@@ -1,7 +1,24 @@
 # Roadmap
 
-Status snapshot as of 2026-08-25. Not a changelog (see `CHANGELOG.md` for
-what shipped) — this is where the project is headed and why, kept current.
+Status snapshot as of 2026-08-25 (formats note added 2026-08-31). Not a
+changelog (see `CHANGELOG.md` for what shipped) — this is where the project
+is headed and why, kept current.
+
+## Formats shipped (standing rule)
+
+Every model in this line ships **GGUF + a bf16 source alongside NVFP4** —
+NVFP4 is the Blackwell "depth" artifact, GGUF is the reach artifact, bf16
+lets others make their own quants. As of 2026-08-29 all three are live:
+
+| repo | format | notes |
+|---|---|---|
+| [`…-REAP-50-NVFP4A16`](https://huggingface.co/Ttimms/Ornith-1.5-35B-A3B-REAP-50-NVFP4A16) | NVFP4A16 (vLLM) | 12.47 GiB, the release default |
+| [`…-REAP-50-GGUF`](https://huggingface.co/Ttimms/Ornith-1.5-35B-A3B-REAP-50-GGUF) | GGUF Q4_K_M/Q5_K_M/Q6_K/Q8_0 | `convert_hf_to_gguf.py --no-mtp`, `llama-server`-verified; F16 dropped in a disk-full recovery, re-quant from bf16 if needed |
+| [`…-REAP-50-bf16`](https://huggingface.co/Ttimms/Ornith-1.5-35B-A3B-REAP-50-bf16) | pruned bf16 source | 38 GB single safetensors; for AWQ / EXL2 / MLX / custom GGUF |
+
+MLX is **Mac-gated** — `mlx-lm` is Apple-Silicon only, so this box cannot
+produce it. Distribution (an r/LocalLLaMA + HF Post writeup — the reach
+step that still hasn't happened) is on the reopen list below.
 
 ## Done
 
