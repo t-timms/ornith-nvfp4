@@ -36,6 +36,36 @@ This README is written to survive a crash or a context reset — see
 "Where things stand" below for exactly what's done, what's verified, and
 what's next.
 
+## Architecture
+
+```mermaid
+graph TD
+    Base["ornith-ai/Ornith-1.5-35B-A3B<br/>qwen3_5_moe - 256 experts - MTP head - ~65 GB bf16 - MIT"]
+
+    subgraph Build ["Build pipeline - RTX 5070 Ti, SM120"]
+        REAP["REAP expert prune 50%<br/>256 -> 128 experts + router-renorm fix (architecture-detected)"]
+        MTP["Strip MTP head<br/>mtp_num_hidden_layers 1 -> 0 - reload-verified"]
+        StripV["Strip vision tower<br/>333 visual tensors (genuinely trained - scope trade-off)"]
+        Quant["GPTQ-NVFP4A16 quantize<br/>compressed-tensors - ~5.5 h - 12.47 GiB"]
+    end
+
+    subgraph HF ["Published on Hugging Face"]
+        A16["REAP-50-NVFP4A16 - 12.47 GiB<br/>vLLM - the depth artifact"]
+        GGUF["REAP-50-GGUF<br/>Q4_K_M / Q5_K_M / Q6_K / Q8_0"]
+        BF16["REAP-50-bf16<br/>pruned source for AWQ / EXL2 / MLX"]
+    end
+
+    subgraph Serve ["Serving & evaluation"]
+        vLLM["vLLM - SM120 (3 upstream gaps patched locally)<br/>prefix cache 96.5% - 49K ctx"]
+        Bench["HumanEval+ 84.2% - MBPP+ 89.2%<br/>SWE-bench Verified 44.0% (mini-swe-agent, same 50-instance slice)"]
+    end
+
+    Base --> REAP --> MTP --> StripV --> Quant --> A16
+    StripV --> BF16
+    BF16 -. convert .-> GGUF
+    A16 --> vLLM --> Bench
+```
+
 ## Why a new base model
 
 The prior release (KAT-Coder-V2.5-Dev, REAP-50% + NVFP4A16) reached 52.0%
