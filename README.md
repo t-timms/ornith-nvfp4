@@ -203,9 +203,10 @@ same as the prior release.
   | HumanEval | 90.24% | 164 |
   | MBPP+ | 89.15% | 378 |
 
-  kat-coder-16gb scored 96.34/89.63/89.42 on the same tasks — Ornith is
-  lower across the board but same tier, reasonable given more aggressive
-  (50%) REAP pruning on a different base model. Raw results:
+  the prior release (kat-coder-nvfp4) reports HumanEval+ ~90% / MBPP+ ~90%
+  on its own card on the same tasks — Ornith is a few points lower but same
+  tier, reasonable given more aggressive (50%) REAP pruning on a different
+  base model. Raw results:
   `~/eval-suite-ornith-vllm/`; launch scripts and task definitions:
   `scripts/eval/`.
 - **SWE-bench Verified ladder completed and graded (2026-08-26).**
