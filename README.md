@@ -35,9 +35,9 @@ source alongside NVFP4):**
 MLX is Mac-gated — this box can't produce it. Model tree: NVFP4A16 + GGUF →
 `quantized` of → `-bf16` → `finetune` of → `ornith-ai/Ornith-1.5-35B-A3B`.
 
-This README is written to survive a crash or a context reset — see
-"Where things stand" below for exactly what's done, what's verified, and
-what's next.
+See **Where things stand** and **Pipeline** below for the full build trail —
+every step, what was verified against real weights, and the decisions made
+along the way.
 
 ## Architecture
 
@@ -286,7 +286,7 @@ same as the prior release.
   clock). Both probe runs were killed once their measurement purpose was
   served, not left to run to completion.
 
-## Planned pipeline
+## Pipeline
 
 1. ~~Download full bf16 checkpoint (71GB).~~ **Done** — 67GB on disk at
    `~/models/Ornith-1.5-35B-A3B`, verified complete.

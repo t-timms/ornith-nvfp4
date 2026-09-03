@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-03
+
+First tagged release. The pipeline is complete and fully evaluated (REAP-50 prune,
+MTP strip, GPTQ-NVFP4A16, vision strip; NVFP4A16 + GGUF + bf16 published on the Hub;
+SWE-bench Verified 44.0%, HumanEval+ 84.2%, MBPP+ 89.2%).
+
 ### Added
 
 - **GGUF + pruned-bf16 releases (2026-08-29).** `Ttimms/Ornith-1.5-35B-A3B-REAP-50-GGUF` (Q4_K_M / Q5_K_M / Q6_K / Q8_0) and `Ttimms/Ornith-1.5-35B-A3B-REAP-50-bf16` (pruned source, 38 GB) are now published alongside the NVFP4A16 release. `convert_hf_to_gguf.py --no-mtp` on current llama.cpp (`qwen3_5_moe` hybrid; the REAP prune keeps `mtp_num_hidden_layers: 1` but carries no MTP tensors, so `--no-mtp` is required), verified via `llama-server`. F16 GGUF was lost in a disk-full recovery — re-quant from the bf16 source if it's needed. Model tree: NVFP4A16 + GGUF → `quantized` → `-bf16` → `finetune` → `ornith-ai/Ornith-1.5-35B-A3B`. Standing rule: every model ships GGUF + bf16 alongside NVFP4 (MLX is Mac-gated).
