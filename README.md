@@ -1,5 +1,8 @@
 # ornith-nvfp4
 
+[![verify](https://img.shields.io/github/actions/workflow/status/t-timms/ornith-nvfp4/verify.yml?style=flat-square&label=verify)](https://github.com/t-timms/ornith-nvfp4/actions/workflows/verify.yml)
+[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](./LICENSE)
+
 Making `ornith-ai/Ornith-1.5-35B-A3B` run as a usable local agentic coding
 model inside 16 GB of consumer VRAM, on an RTX 5070 Ti (SM120). Same
 pipeline as this project's prior release

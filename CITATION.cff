@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+title: ornith-nvfp4
+abstract: >-
+  A REAP expert-pruned (50%, 256->128 experts) and GPTQ-NVFP4A16-quantized
+  build of ornith-ai/Ornith-1.5-35B-A3B, with the MTP head and vision tower
+  stripped, served by vLLM inside 16 GB of consumer VRAM on an RTX 5070 Ti
+  (SM120). Final artifact is 12.47 GiB. Published SWE-bench Verified
+  (22/50 = 44.0%, official harness), HumanEval+ (84.2%) and MBPP+ (89.2%)
+  figures on the same 50-instance slice as the prior kat-coder-nvfp4 release.
+  Includes an architecture-detected router-renormalization fix for the
+  qwen3_5_moe REAP adapter (t-timms/reap-cuda).
+type: software
+message: >-
+  If you use this checkpoint, please also cite the upstream
+  ornith-ai/Ornith-1.5-35B-A3B model from which it is derived.
+authors:
+  - name: t-timms
+repository-code: https://github.com/t-timms/ornith-nvfp4
+url: https://huggingface.co/Ttimms/Ornith-1.5-35B-A3B-REAP-50-NVFP4A16
+license: MIT
+keywords:
+  - expert-pruning
+  - reap
+  - nvfp4
+  - quantization
+  - mixture-of-experts
+  - vllm
+  - agentic-coding
+references:
+  - type: software
+    title: Ornith-1.5-35B-A3B
+    authors:
+      - name: ornith-ai
+    url: https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B

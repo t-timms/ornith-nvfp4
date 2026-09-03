@@ -1,0 +1,46 @@
+name: verify
+
+# Repository invariants only. Nothing here needs a GPU, a checkpoint, or any of
+# the pipeline environments - those are documented in docs/ and cannot run in CI.
+# The point is to catch the cheap failures automatically so the expensive ones
+# get human attention.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Shell syntax
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            bash -n "$f" || { echo "::error file=$f::bash syntax error"; fail=1; }
+          done < <(find scripts -name '*.sh')
+          exit $fail
+
+      - name: Python syntax
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            python -m py_compile "$f" || { echo "::error file=$f::py_compile failed"; fail=1; }
+          done < <(find scripts -name '*.py')
+          exit $fail
+
+      - name: Docs referenced by README / ROADMAP exist
+        run: |
+          fail=0
+          while IFS= read -r doc; do
+            [ -f "$doc" ] || { echo "::error::referenced file missing: $doc"; fail=1; }
+          done < <(grep -ohE 'docs/[A-Za-z0-9._/-]+\.md' README.md ROADMAP.md | sort -u)
+          exit $fail
