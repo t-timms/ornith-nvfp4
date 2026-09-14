@@ -7,6 +7,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Planned
+- Native NVFP4-GGUF via `michaelw9999/advanced-gguf-quantizer` (security-vetted
+  2026-09-14), replacing/supplementing the k-quant-only GGUF release with a
+  Blackwell-tensor-core-accelerated one. See `ROADMAP.md`. Not started.
+
 ## [1.0.0] - 2026-09-03
 
 First tagged release. The pipeline is complete and fully evaluated (REAP-50 prune,

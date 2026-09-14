@@ -299,3 +299,14 @@ below are the reopen list, in rough priority order.
   expert pruning — no validated recipe exists for combining both axes.
 - A from-scratch comparison against `kat-coder-nvfp4`'s published numbers,
   once this build has its own validated SWE-bench score.
+- **Native NVFP4-GGUF (planned, 2026-09-14) — not started.** Same item as
+  `kat-coder-nvfp4`'s ROADMAP.md — confirmed in `ggml-org/llama.cpp` source that
+  `GGML_TYPE_NVFP4` has full Blackwell CUDA kernels but no official quantize path
+  (absent from `quantize.cpp`'s `QUANT_OPTIONS` and from `convert_hf_to_gguf.py`).
+  Plan: `michaelw9999/advanced-gguf-quantizer` (security-vetted — 96-commit
+  single-maintainer history, no build-time downloads, no suspicious exec/eval)
+  against the existing `-REAP-50-bf16` checkpoint. Would replace/supplement the
+  current k-quant GGUF, which never touches FP4 cores on this hardware. Full
+  runbook in the private `local-llm-playbook` repo, PART 10. Gated on the
+  Bible-Assistant validation run landing clean first — this is the second of two
+  models queued after it.
