@@ -1,0 +1,82 @@
+diff --git a/vllm/model_executor/models/qwen3_5.py b/vllm/model_executor/models/qwen3_5.py
+index bcd2576b7..786183e23 100644
+--- a/vllm/model_executor/models/qwen3_5.py
++++ b/vllm/model_executor/models/qwen3_5.py
+@@ -373,6 +373,54 @@ class Qwen3_5ForCausalLMBase(
+         )
+         return loader.load_weights(weights)
+ 
++    # NOTE (2026-08-25, local patch, not upstream): Qwen3_5ForCausalLMBase was
++    # missing get_mamba_state_dtype_from_config / get_mamba_state_shape_from_config
++    # / get_mamba_state_copy_func - IsHybrid declares them as required but they are
++    # abstract stubs there (body "..."), the real implementations only existed on
++    # Qwen3_5ForConditionalGeneration. Confirmed by reading both classes directly:
++    # none of the three reference self.language_model or any ConditionalGeneration-
++    # specific state, they only use vllm_config and generic
++    # MambaState*Calculator helpers, so they are copied here verbatim, not adapted.
++    # Without this, vLLM crashes in _get_mamba_bufs() with
++    # AttributeError (self.model.get_mamba_state_copy_func() missing) the first time
++    # a request executes, after model load and KV cache init both succeed.
++    @classmethod
++    def get_mamba_state_dtype_from_config(
++        cls,
++        vllm_config: "VllmConfig",
++    ) -> tuple[torch.dtype, torch.dtype]:
++        return MambaStateDtypeCalculator.gated_delta_net_state_dtype(
++            vllm_config.model_config.dtype,
++            vllm_config.cache_config.mamba_cache_dtype,
++            vllm_config.cache_config.mamba_ssm_cache_dtype,
++        )
++
++    @classmethod
++    def get_mamba_state_shape_from_config(
++        cls, vllm_config: "VllmConfig"
++    ) -> tuple[tuple[int, int], tuple[int, int]]:
++        parallel_config = vllm_config.parallel_config
++        hf_config = vllm_config.model_config.hf_text_config
++        tp_size = parallel_config.tensor_parallel_size
++        num_spec = (
++            vllm_config.speculative_config.num_speculative_tokens
++            if vllm_config.speculative_config
++            else 0
++        )
++        return MambaStateShapeCalculator.gated_delta_net_state_shape(
++            tp_size,
++            hf_config.linear_num_key_heads,
++            hf_config.linear_num_value_heads,
++            hf_config.linear_key_head_dim,
++            hf_config.linear_value_head_dim,
++            hf_config.linear_conv_kernel_dim,
++            num_spec,
++        )
++
++    @classmethod
++    def get_mamba_state_copy_func(cls) -> tuple[MambaStateCopyFunc, MambaStateCopyFunc]:
++        return MambaStateCopyFuncCalculator.gated_delta_net_state_copy_func()
++
+ 
+ class Qwen3_5ForCausalLM(Qwen3_5ForCausalLMBase):
+     pass
+diff --git a/vllm/model_executor/models/registry.py b/vllm/model_executor/models/registry.py
+index d28aac974..8c6bd488d 100644
+--- a/vllm/model_executor/models/registry.py
++++ b/vllm/model_executor/models/registry.py
+@@ -109,6 +109,10 @@ _TEXT_GENERATION_MODELS = {
+     "Gemma3nForCausalLM": ("gemma3n", "Gemma3nForCausalLM"),
+     "Gemma4ForCausalLM": ("gemma4", "Gemma4ForCausalLM"),
+     "Qwen3NextForCausalLM": ("qwen3_next", "Qwen3NextForCausalLM"),
++    # local (not upstream, 2026-08-29): dense text-only Qwen3.5 hybrid. Class is
++    # implemented in qwen3_5.py:425 (Qwen3_5ForCausalLM); only the registry entry
++    # was missing — same gap the Ornith work fixed for Qwen3_5MoeForCausalLM.
++    "Qwen3_5ForCausalLM": ("qwen3_5", "Qwen3_5ForCausalLM"),
+     "GlmForCausalLM": ("glm", "GlmForCausalLM"),
+     "Glm4ForCausalLM": ("glm4", "Glm4ForCausalLM"),
+     "Glm4MoeForCausalLM": ("glm4_moe", "Glm4MoeForCausalLM"),
+@@ -575,6 +579,7 @@ _MULTIMODAL_MODELS = {
+         "qwen3_5",
+         "Qwen3_5MoeForConditionalGeneration",
+     ),
++    "Qwen3_5MoeForCausalLM": ("qwen3_5", "Qwen3_5MoeForCausalLM"),
+     "RForConditionalGeneration": ("rvl", "RForConditionalGeneration"),
+     "SkyworkR1VChatModel": ("skyworkr1v", "SkyworkR1VChatModel"),
+     "SmolVLMForConditionalGeneration": ("smolvlm", "SmolVLMForConditionalGeneration"),
